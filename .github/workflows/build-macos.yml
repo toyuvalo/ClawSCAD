@@ -6,6 +6,9 @@ on:
     tags: ['v*', '20*']
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -25,7 +28,7 @@ jobs:
         run: npm run build:renderer
 
       - name: Build macOS dmg
-        run: npm run dist:mac
+        run: npx electron-builder --mac --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
