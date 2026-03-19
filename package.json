@@ -6,15 +6,16 @@
   "scripts": {
     "postinstall": "electron-rebuild -f -w node-pty",
     "build:renderer": "node -e \"require('fs').mkdirSync('dist',{recursive:true})\" && esbuild renderer.js --bundle --outfile=dist/renderer.js --format=esm --platform=browser --loader:.ttf=file",
+    "download-openscad": "node scripts/download-openscad.js",
     "start": "npm run build:renderer && electron .",
     "dev": "npm run build:renderer && electron . --dev",
     "test": "npm run build:renderer && npx playwright test",
     "test:headed": "npm run build:renderer && npx playwright test --headed",
-    "pack": "npm run build:renderer && electron-builder --dir",
-    "dist": "npm run build:renderer && electron-builder",
-    "dist:linux": "npm run build:renderer && electron-builder --linux",
-    "dist:win": "npm run build:renderer && electron-builder --win",
-    "dist:mac": "npm run build:renderer && electron-builder --mac"
+    "pack": "npm run download-openscad && npm run build:renderer && electron-builder --dir",
+    "dist": "npm run download-openscad && npm run build:renderer && electron-builder",
+    "dist:linux": "npm run download-openscad && npm run build:renderer && electron-builder --linux",
+    "dist:win": "npm run download-openscad && npm run build:renderer && electron-builder --win",
+    "dist:mac": "npm run download-openscad && npm run build:renderer && electron-builder --mac"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
@@ -56,13 +57,19 @@
         { "target": "AppImage", "arch": ["x64"] }
       ],
       "icon": "icon.png",
-      "category": "Graphics"
+      "category": "Graphics",
+      "extraResources": [
+        { "from": "vendors/openscad-linux.AppImage", "to": "openscad-linux.AppImage" }
+      ]
     },
     "win": {
       "target": [
         { "target": "nsis", "arch": ["x64"] }
       ],
-      "icon": "icon.png"
+      "icon": "icon.png",
+      "extraResources": [
+        { "from": "vendors/openscad-win", "to": "openscad-win" }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -73,7 +80,10 @@
         { "target": "dmg", "arch": ["arm64"] }
       ],
       "icon": "icon.png",
-      "category": "public.app-category.graphics-design"
+      "category": "public.app-category.graphics-design",
+      "extraResources": [
+        { "from": "vendors/OpenSCAD.app", "to": "OpenSCAD.app" }
+      ]
     },
     "dmg": {
       "contents": [

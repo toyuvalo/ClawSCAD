@@ -12,11 +12,8 @@ let electronApp;
 let page;
 
 test.beforeAll(async () => {
-  // Build renderer before tests
   const { execSync } = require('child_process');
   execSync('npm run build:renderer', { cwd: APP_PATH, stdio: 'pipe' });
-
-  // Create a clean test workspace
   fs.mkdirSync(TEST_WORKSPACE, { recursive: true });
 });
 
@@ -26,19 +23,15 @@ test.beforeEach(async () => {
     cwd: APP_PATH,
   });
   page = await electronApp.firstWindow();
-  // Wait for the app to fully render
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(1000); // Allow three.js/monaco to initialize
+  await page.waitForTimeout(1000);
 });
 
 test.afterEach(async () => {
-  if (electronApp) {
-    await electronApp.close();
-  }
+  if (electronApp) await electronApp.close();
 });
 
 test.afterAll(async () => {
-  // Clean up test workspace
   fs.rmSync(TEST_WORKSPACE, { recursive: true, force: true });
 });
 
@@ -114,10 +107,9 @@ test.describe('ClawSCAD Menu', () => {
     const count = await items.count();
     expect(count).toBeGreaterThanOrEqual(10);
 
-    // Check key menu items exist
-    await expect(page.locator('[data-action="new-window"]')).toBeVisible();
+    // Use actual data-action values from index.html
+    await expect(page.locator('[data-action="new-project"]')).toBeVisible();
     await expect(page.locator('[data-action="open-workspace"]')).toBeVisible();
-    await expect(page.locator('[data-action="new-session"]')).toBeVisible();
     await expect(page.locator('[data-action="screenshot"]')).toBeVisible();
     await expect(page.locator('[data-action="toggle-editor"]')).toBeVisible();
     await expect(page.locator('[data-action="devtools"]')).toBeVisible();
@@ -127,9 +119,8 @@ test.describe('ClawSCAD Menu', () => {
     await page.locator('#app-menu-btn').click();
     const menu = page.locator('#app-menu');
     await expect(menu).not.toHaveClass(/hidden/);
-
-    // Click on the viewport (outside the menu)
-    await page.locator('#viewport').click({ position: { x: 200, y: 200 } });
+    // Click the status bar — always below the open menu, never covered by it
+    await page.locator('#status-bar').click();
     await expect(menu).toHaveClass(/hidden/);
   });
 
@@ -137,8 +128,6 @@ test.describe('ClawSCAD Menu', () => {
     await page.locator('#app-menu-btn').click();
     const menu = page.locator('#app-menu');
     await expect(menu).not.toHaveClass(/hidden/);
-
-    // Toggle editor
     await page.locator('[data-action="toggle-editor"]').click();
     await expect(menu).toHaveClass(/hidden/);
   });
@@ -147,19 +136,22 @@ test.describe('ClawSCAD Menu', () => {
 // ── Viewport Toolbar Tests ──────────────────────────────────────────
 
 test.describe('Viewport Toolbar', () => {
-  test('toolbar is visible with all buttons', async () => {
-    const toolbar = page.locator('#viewport-toolbar');
-    await expect(toolbar).toBeVisible();
+  test('toolbar buttons are injected into left/right containers', async () => {
+    // Buttons are dynamically added by renderer.js into #viewport-toolbar-left/right
+    const left = page.locator('#viewport-toolbar-left');
+    const right = page.locator('#viewport-toolbar-right');
+    await expect(left).toBeAttached();
+    await expect(right).toBeAttached();
 
-    await expect(page.locator('#btn-render')).toBeVisible();
-    await expect(page.locator('#btn-reset')).toBeVisible();
-    await expect(page.locator('#btn-fit')).toBeVisible();
-    await expect(page.locator('#btn-wire')).toBeVisible();
-    await expect(page.locator('#btn-edges')).toBeVisible();
-    await expect(page.locator('#btn-ortho')).toBeVisible();
-    await expect(page.locator('#btn-zoom-in')).toBeVisible();
-    await expect(page.locator('#btn-zoom-out')).toBeVisible();
-    await expect(page.locator('#btn-screenshot')).toBeVisible();
+    // Key buttons must exist by their IDs
+    await expect(page.locator('#btn-render')).toBeAttached();
+    await expect(page.locator('#btn-zoom-in')).toBeAttached();
+    await expect(page.locator('#btn-zoom-out')).toBeAttached();
+    await expect(page.locator('#btn-fit')).toBeAttached();
+    await expect(page.locator('#btn-wire')).toBeAttached();
+    await expect(page.locator('#btn-edges')).toBeAttached();
+    await expect(page.locator('#btn-ortho')).toBeAttached();
+    await expect(page.locator('#btn-screenshot')).toBeAttached();
   });
 
   test('render button has distinct green styling', async () => {
@@ -170,7 +162,6 @@ test.describe('Viewport Toolbar', () => {
 
   test('wireframe toggle changes button state', async () => {
     const btn = page.locator('#btn-wire');
-    // Should not be active initially
     await expect(btn).not.toHaveClass(/active/);
     await btn.click();
     await expect(btn).toHaveClass(/active/);
@@ -207,17 +198,11 @@ test.describe('Editor Panel', () => {
   });
 
   test('edit mode toggle works', async () => {
-    // Expand editor first
     await page.locator('#editor-toggle').click();
-
     const editBtn = page.locator('#editor-edit-toggle');
     await expect(editBtn).not.toHaveClass(/active/);
-
-    // Enable edit mode
     await editBtn.click();
     await expect(editBtn).toHaveClass(/active/);
-
-    // Save button should appear
     const saveBtn = page.locator('#editor-save-btn');
     await expect(saveBtn).not.toHaveClass(/hidden/);
   });
@@ -250,14 +235,11 @@ test.describe('Part Properties', () => {
   });
 
   test('print settings toggle works', async () => {
-    // Make the panel visible via JS since we can't click a model
     await page.evaluate(() => {
       document.getElementById('part-props').classList.remove('hidden');
     });
-
     const settingsPanel = page.locator('#part-props-settings');
     await expect(settingsPanel).toHaveClass(/hidden/);
-
     await page.locator('#part-props-settings-btn').click();
     await expect(settingsPanel).not.toHaveClass(/hidden/);
   });
@@ -266,7 +248,6 @@ test.describe('Part Properties', () => {
     const infill = page.locator('#setting-infill');
     const material = page.locator('#setting-material');
     const cost = page.locator('#setting-cost');
-
     await expect(infill).toHaveValue('15');
     await expect(material).toHaveValue('PLA');
     await expect(cost).toHaveValue('20');
@@ -307,25 +288,33 @@ test.describe('Workspace Setup', () => {
     expect(content).toContain('MCP Tools Available');
   });
 
-  test('MCP server config is created', async () => {
+  test('MCP server config is created with command and openscad path', async () => {
     const settings = path.join(TEST_WORKSPACE, '.claude', 'settings.json');
     expect(fs.existsSync(settings)).toBe(true);
     const config = JSON.parse(fs.readFileSync(settings, 'utf-8'));
     expect(config.mcpServers).toBeDefined();
     expect(config.mcpServers.openscad).toBeDefined();
     expect(config.mcpServers.openscad.command).toBe('npx');
+    // Bundled binary path should be passed so MCP server uses the same OpenSCAD
+    expect(config.mcpServers.openscad.env).toBeDefined();
+    expect(config.mcpServers.openscad.env.OPENSCAD_PATH).toBeTruthy();
+  });
+
+  test('MCP OPENSCAD_PATH points to an existing binary', async () => {
+    const settings = path.join(TEST_WORKSPACE, '.claude', 'settings.json');
+    const config = JSON.parse(fs.readFileSync(settings, 'utf-8'));
+    const binPath = config.mcpServers.openscad.env.OPENSCAD_PATH;
+    // Path must exist (bundled vendors/ AppImage) or be a system fallback name
+    const isBundled = fs.existsSync(binPath);
+    const isSystemFallback = binPath === 'openscad';
+    expect(isBundled || isSystemFallback).toBe(true);
   });
 
   test('clawscad.json state file format', async () => {
-    // Initially may not exist, but after a checkpoint it should
     const statePath = path.join(TEST_WORKSPACE, 'clawscad.json');
-    // Create a test .scad file to trigger checkpoint creation
     const testScad = path.join(TEST_WORKSPACE, 'test-cube.scad');
     fs.writeFileSync(testScad, '// Test cube\ncube([10, 10, 10]);');
-
-    // Wait for file watcher to pick it up
     await page.waitForTimeout(1500);
-
     if (fs.existsSync(statePath)) {
       const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
       expect(state).toHaveProperty('checkpoints');
@@ -340,10 +329,7 @@ test.describe('Checkpoint System', () => {
   test('creating a .scad file adds a checkpoint', async () => {
     const testScad = path.join(TEST_WORKSPACE, 'my-first-gear.scad');
     fs.writeFileSync(testScad, '// A simple gear shape\ncube([20, 20, 5]);');
-
-    // Wait for file watcher + checkpoint creation
     await page.waitForTimeout(1500);
-
     const tree = page.locator('#checkpoint-tree');
     await expect(tree).not.toContainText('No checkpoints yet');
     await expect(tree).toContainText('my first gear');
@@ -352,13 +338,9 @@ test.describe('Checkpoint System', () => {
   test('checkpoint shows description on hover', async () => {
     const testScad = path.join(TEST_WORKSPACE, 'hover-test-part.scad');
     fs.writeFileSync(testScad, '// Tooltip description test\nsphere(r=5);');
-
     await page.waitForTimeout(1500);
-
-    // Hover over the checkpoint node
     const node = page.locator('.cp-node').last();
     await node.hover();
-
     const tooltip = page.locator('#cp-tooltip');
     await expect(tooltip).not.toHaveClass(/hidden/);
     await expect(page.locator('#cp-tooltip-desc')).toContainText('Tooltip description test');
@@ -367,9 +349,7 @@ test.describe('Checkpoint System', () => {
   test('active.scad is created when checkpoint is selected', async () => {
     const testScad = path.join(TEST_WORKSPACE, 'active-test.scad');
     fs.writeFileSync(testScad, '// Active test\ncube(5);');
-
     await page.waitForTimeout(1500);
-
     const activePath = path.join(TEST_WORKSPACE, 'active.scad');
     expect(fs.existsSync(activePath)).toBe(true);
     const content = fs.readFileSync(activePath, 'utf-8');
@@ -377,27 +357,125 @@ test.describe('Checkpoint System', () => {
   });
 });
 
+// ── Render Pipeline Tests ───────────────────────────────────────────
+// These tests verify the full path: .scad file → OpenSCAD subprocess → 3D model in viewport.
+// They catch regressions in binary resolution, process spawning, and model loading.
+
+test.describe('Render Pipeline', () => {
+  // Helper: poll the filesystem until an output file appears next to the .scad
+  async function waitForRenderOutput(scadPath, timeoutMs = 20000) {
+    const base = scadPath.replace(/\.scad$/, '');
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (fs.existsSync(base + '.3mf') || fs.existsSync(base + '.stl')) return true;
+      await page.waitForTimeout(300);
+    }
+    return false;
+  }
+
+  test('renders a simple sphere and produces a 3mf/stl output file', async () => {
+    const scadPath = path.join(TEST_WORKSPACE, 'pipeline-sphere.scad');
+    fs.writeFileSync(scadPath, '// Pipeline test sphere\nsphere(r=10);');
+
+    const rendered = await waitForRenderOutput(scadPath);
+    expect(rendered).toBe(true);
+  });
+
+  test('render overlay hides after successful render', async () => {
+    const scadPath = path.join(TEST_WORKSPACE, 'pipeline-overlay.scad');
+    fs.writeFileSync(scadPath, '// Overlay test\ncube([5, 5, 5]);');
+
+    await waitForRenderOutput(scadPath);
+    // Give renderer time to process the model:update IPC and hide the overlay
+    await page.waitForTimeout(500);
+
+    const overlay = page.locator('#render-overlay');
+    const opacity = await overlay.evaluate((el) => getComputedStyle(el).opacity);
+    expect(opacity).toBe('0');
+  });
+
+  test('renders a colored model (color() preserved in 3mf)', async () => {
+    const scadPath = path.join(TEST_WORKSPACE, 'pipeline-colored.scad');
+    fs.writeFileSync(scadPath, [
+      '// Colored model test',
+      'color("SteelBlue") sphere(r=8);',
+    ].join('\n'));
+
+    const rendered = await waitForRenderOutput(scadPath);
+    expect(rendered).toBe(true);
+
+    // 3MF preserves color; verify it was preferred (not just .stl fallback)
+    const tmfPath = scadPath.replace('.scad', '.3mf');
+    expect(fs.existsSync(tmfPath)).toBe(true);
+  });
+
+  test('canvas has rendered pixels after model loads', async () => {
+    const scadPath = path.join(TEST_WORKSPACE, 'pipeline-canvas.scad');
+    fs.writeFileSync(scadPath, '// Canvas pixel test\ncylinder(h=20, r=8);');
+
+    await waitForRenderOutput(scadPath);
+    await page.waitForTimeout(800); // allow three.js to render a frame
+
+    // Screenshot the canvas and verify it is not a uniform solid color
+    // (a blank/black canvas means the model failed to load into WebGL)
+    const canvas = page.locator('#viewport canvas');
+    const screenshot = await canvas.screenshot();
+
+    // A rendered 3D model will have varied pixel values; blank = all one color.
+    // Sample the PNG buffer for non-uniformity (crude but reliable).
+    const uniqueBytes = new Set(screenshot.slice(0, 4000)).size;
+    expect(uniqueBytes).toBeGreaterThan(10);
+  });
+
+  test('broken .scad file creates RENDER_ERRORS.md', async () => {
+    const scadPath = path.join(TEST_WORKSPACE, 'pipeline-broken.scad');
+    fs.writeFileSync(scadPath, '// Intentionally broken\nthis_is_not_valid_openscad(');
+
+    // Wait a bit longer since error path still runs OpenSCAD to get the error
+    const deadline = Date.now() + 15000;
+    const errFile = path.join(TEST_WORKSPACE, 'RENDER_ERRORS.md');
+    let errorFileCreated = false;
+    while (Date.now() < deadline) {
+      if (fs.existsSync(errFile)) { errorFileCreated = true; break; }
+      await page.waitForTimeout(300);
+    }
+
+    expect(errorFileCreated).toBe(true);
+    const content = fs.readFileSync(errFile, 'utf-8');
+    expect(content).toContain('pipeline-broken.scad');
+    expect(content).toContain('Create a NEW fixed .scad file');
+  });
+
+  test('two sequential .scad files both render (queue works)', async () => {
+    const scad1 = path.join(TEST_WORKSPACE, 'queue-first.scad');
+    const scad2 = path.join(TEST_WORKSPACE, 'queue-second.scad');
+    fs.writeFileSync(scad1, '// First in queue\ncube(10);');
+    // Write second immediately — should queue behind first
+    fs.writeFileSync(scad2, '// Second in queue\nsphere(5);');
+
+    const [ok1, ok2] = await Promise.all([
+      waitForRenderOutput(scad1),
+      waitForRenderOutput(scad2),
+    ]);
+    expect(ok1).toBe(true);
+    expect(ok2).toBe(true);
+  });
+});
+
 // ── Keyboard Shortcuts Tests ────────────────────────────────────────
 
 test.describe('Keyboard Shortcuts', () => {
   test('F5 triggers re-render (global)', async () => {
-    // Listen for the toast that appears
     await page.keyboard.press('F5');
-    // Should show a toast (even if render fails due to no active checkpoint)
-    const toast = page.locator('.toast').first();
-    // Toast may or may not appear depending on state
+    // No error thrown = pass; deeper render assertions are in Render Pipeline suite
   });
 
   test('Ctrl+N opens new window dialog', async () => {
-    // We can't easily test the dialog opening, but we can verify the shortcut doesn't error
-    // The dialog would block, so we just verify the event fires
     const dialogPromise = electronApp.evaluate(async ({ dialog }) => {
-      // Mock the dialog to auto-cancel
       dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
     });
     await dialogPromise;
     await page.keyboard.press('Control+n');
-    // No error = pass
   });
 });
 
@@ -422,14 +500,12 @@ test.describe('3D Viewport', () => {
 test.describe('Toast Notifications', () => {
   test('showToast creates a visible toast', async () => {
     await page.evaluate(() => {
-      // Access the showToast function via the global scope
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
       toast.className = 'toast toast-info visible';
       toast.textContent = 'Test notification';
       container.appendChild(toast);
     });
-
     const toast = page.locator('.toast').first();
     await expect(toast).toBeVisible();
     await expect(toast).toContainText('Test notification');

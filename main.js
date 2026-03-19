@@ -6,7 +6,33 @@ const pty = require('node-pty');
 const chokidar = require('chokidar');
 const { execFile, spawn } = require('child_process');
 
-const OPENSCAD_BIN = process.env.OPENSCAD_BINARY || 'openscad';
+// Resolve the OpenSCAD binary: prefer bundled copy, fall back to env / system.
+// In packaged builds, extraResources lands at process.resourcesPath.
+// In dev, look in the repo's vendors/ directory (populated by download-openscad.js).
+function resolveOpenSCAD() {
+  const base = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, 'vendors');
+  const candidates = {
+    linux:  path.join(base, 'openscad-linux.AppImage'),
+    darwin: path.join(base, 'OpenSCAD.app', 'Contents', 'MacOS', 'OpenSCAD'),
+    win32:  path.join(base, 'openscad-win', 'openscad.exe'),
+  };
+  const bundled = candidates[process.platform];
+  if (bundled && fs.existsSync(bundled)) return bundled;
+  return process.env.OPENSCAD_BINARY || 'openscad';
+}
+const OPENSCAD_BIN = resolveOpenSCAD();
+
+// Extra env vars needed when running OpenSCAD on specific platforms.
+// On Linux, APPIMAGE_EXTRACT_AND_RUN=1 lets a bundled AppImage run inside
+// the Electron AppImage without needing nested FUSE mounts.
+function openscadEnv() {
+  if (process.platform === 'linux' && OPENSCAD_BIN.endsWith('.AppImage')) {
+    return { ...process.env, APPIMAGE_EXTRACT_AND_RUN: '1' };
+  }
+  return process.env;
+}
 const STATE_FILE = 'clawscad.json';
 const ACTIVE_FILE = 'active.scad';
 const MAX_WINDOWS = 4;
@@ -330,6 +356,8 @@ function initWorkspace(ctx) {
   settings.mcpServers.openscad = {
     command: 'npx',
     args: ['-y', 'openscad-mcp-server'],
+    // Point the MCP server at the same bundled binary ClawSCAD uses
+    env: { OPENSCAD_PATH: OPENSCAD_BIN },
   };
   fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
 }
@@ -475,7 +503,7 @@ function processRenderQueue(ctx) {
 
   ctxSend(ctx, 'render:start', { file: path.basename(scadPath) });
 
-  execFile(OPENSCAD_BIN, ['-o', outputPath, scadPath], { timeout: 120000 }, (err, stdout, stderr) => {
+  execFile(OPENSCAD_BIN, ['-o', outputPath, scadPath], { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
     ctx.isRendering = false;
 
     if (err || !fs.existsSync(outputPath)) {
@@ -957,7 +985,7 @@ ipcMain.handle('app:export', async (event, format) => {
     : ['-o', result.filePath, scadPath];
 
   return new Promise((resolve) => {
-    execFile(OPENSCAD_BIN, args, { timeout: 120000 }, (err, stdout, stderr) => {
+    execFile(OPENSCAD_BIN, args, { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
       if (err) {
         resolve({ error: stderr || err.message });
       } else {
