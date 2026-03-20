@@ -6,66 +6,55 @@
 
 <p align="center">
   <strong>AI-powered 3D CAD environment</strong><br>
-  OpenSCAD + Claude Code with checkpoint branching, auto-iteration, and multi-viewport support
-</p>
-
-<p align="center">
-  <img src="screenshot.png" alt="ClawSCAD Screenshot" width="900">
+  OpenSCAD + Claude Code with checkpoint branching, auto-iteration, and live PBR viewport
 </p>
 
 ---
 
-## What is ClawSCAD?
-
-ClawSCAD glues together [OpenSCAD](https://openscad.org/) and [Claude Code](https://github.com/anthropics/claude-code) into a single desktop application. Tell Claude what to build, and it writes OpenSCAD code, renders it, validates the output, and auto-iterates until the model is correct — all while you watch in a live 3D viewport.
-
-Every iteration is saved as an immutable checkpoint. You can click any checkpoint to go back, branch from it, and explore different design directions. Claude sees your full history and can reference any previous version.
+ClawSCAD wraps [OpenSCAD](https://openscad.org/) and [Claude Code](https://github.com/anthropics/claude-code) into a single Electron desktop app. Describe what you want to build, Claude writes the OpenSCAD code, the app renders it in a live 3D viewport, and every iteration is saved as an immutable checkpoint you can branch from at any time.
 
 ## Features
 
 **3D Viewport**
-- PBR rendering with environment-mapped reflections
-- Orbit, pan, zoom (mouse + touch + keyboard)
+- PBR rendering with environment-mapped reflections (Three.js)
+- Orbit, pan, zoom — mouse, touch, and keyboard
 - Wireframe, edge overlay, orthographic/perspective toggle
 - 7 camera presets (Front/Back/Left/Right/Top/Bottom/Iso)
-- Click any part to see dimensions, volume, weight, estimated print cost
-- 6 customizable color swatches for instant model coloring
+- Click any part to inspect dimensions, volume, weight, and estimated print cost
+- 6 colour swatches for instant model recolouring
+- Split viewport — open a second independent 3D view
 - Screenshot export
-- Split viewport — open a second 3D view with independent camera
 
 **Checkpoint History**
-- Every .scad file is an immutable checkpoint in a branching tree
-- Click any checkpoint to instantly load its model (cached in memory)
-- Branch from any point — Claude creates new files, never overwrites
-- Collapsible tree with box-drawing connectors
-- Right-click context menu: rename, delete, collapse, view source, resume session
-- Hover tooltips showing the change description
+- Every `.scad` file Claude writes is a permanent, numbered checkpoint
+- Claude never overwrites — it always creates a new file
+- Click any checkpoint to load it instantly (cached in memory)
+- Branch from any point and explore design alternatives without losing previous work
+- Right-click context menu: rename, delete, view source, resume session
 
-**Source Editor**
-- Monaco editor with OpenSCAD syntax highlighting (Monarch grammar)
-- Custom dark theme matching the app
-- Find (Ctrl+F) and Replace (Ctrl+H)
+**Monaco Editor**
+- Full OpenSCAD syntax highlighting (custom Monarch grammar)
 - Read-only by default, toggle to edit mode
-- OpenSCAD error markers (red squiggles on error lines)
+- Error markers (red squiggles) on OpenSCAD error lines
+- Find / Replace (Ctrl+F / Ctrl+H)
 
 **Claude Code Integration**
-- Embedded terminal running Claude Code
-- OpenSCAD MCP server auto-configured for every workspace
-- CLAUDE.md with mandatory rules: never overwrite files, use colors, validate with MCP tools
-- Auto-iteration: when a render fails, ClawSCAD writes errors to RENDER_ERRORS.md and nudges Claude to fix them
-- Session management: browse, resume, or start new Claude sessions
-- Dual terminal support (up to 2 Claude instances)
-- Multi-window support (up to 4 projects, Claude sees all workspaces)
+- Embedded xterm.js terminal running Claude Code
+- OpenSCAD MCP server auto-configured — Claude can render, validate, and inspect models programmatically
+- `CLAUDE.md` injects mandatory rules: never overwrite files, use colours, validate with MCP tools
+- Auto-iteration: on render failure, ClawSCAD writes errors to `RENDER_ERRORS.md` and prompts Claude to fix them
+- Dual terminal support (up to 2 Claude instances simultaneously)
+- Multi-window support (up to 4 projects)
 
 **Export**
-- STL, 3MF, and PNG export buttons in the header
-- 3MF export preserves per-part colors (when OpenSCAD supports it)
-- Print cost estimation with configurable infill, material, and cost/kg
+- STL, 3MF, and PNG export
+- 3MF preserves per-part colours
+- Print cost estimation (configurable infill, material, cost/kg)
 
 ## Install
 
 ```bash
-git clone https://github.com/levkropp/ClawSCAD.git
+git clone https://github.com/toyuvalo/ClawSCAD.git
 cd ClawSCAD
 npm install
 npm start
@@ -78,52 +67,45 @@ npm start
 
 ## Usage
 
-1. Launch ClawSCAD — it creates a workspace at `~/clawscad-workspace/`
-2. Claude Code starts in the terminal panel on the right
-3. Tell Claude what to build: *"Make a gear with 20 teeth and a shaft hole"*
-4. Claude writes a .scad file, ClawSCAD auto-renders it in the 3D viewport
+1. Launch ClawSCAD — workspace created at `~/clawscad-workspace/`
+2. Claude Code starts in the terminal panel
+3. Describe what you want: *"Make a gear with 20 teeth and a 5mm shaft hole"*
+4. Claude writes a `.scad` file — ClawSCAD auto-renders it in the viewport
 5. If the render fails, ClawSCAD tells Claude to fix it automatically
 6. Click any checkpoint in the History panel to go back and branch
-7. Use the color swatches to try different colors instantly
-8. Export to STL/3MF when you're happy with the design
+7. Export to STL/3MF when done
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl+N` | New viewport (split view) |
-| `Ctrl+F` | Find in source editor |
-| `Ctrl+H` | Find and replace |
 | `F5` | Force re-render |
-| `1`-`7` | Camera presets (when viewport focused) |
+| `1`–`7` | Camera presets |
 | `R` | Reset view |
 | `F` | Zoom to fit |
 | `W` | Toggle wireframe |
 | `E` | Toggle edges |
 | `O` | Toggle ortho/perspective |
-| `+`/`-` | Zoom in/out |
-| `Escape` | Deselect part |
 
 ## Architecture
 
 ```
-ClawSCAD
-├── main.js          Electron main process — multi-window, project state, render queue, MCP client
-├── renderer.js      3D viewport (three.js), terminal (xterm.js), editor (Monaco), checkpoint tree
-├── preload.js       IPC bridge between main and renderer
-├── index.html       Layout
-├── style.css        Dark theme
-└── icon.png         App icon
+ClawSCAD/
+├── main.js       Electron main — multi-window, project state, render queue, MCP client
+├── renderer.js   Three.js viewport, xterm.js terminal, Monaco editor, checkpoint tree
+├── preload.js    IPC bridge
+├── index.html    Layout
+└── style.css     Dark theme
 ```
 
-- **Rendering**: OpenSCAD CLI (`openscad -o output.3mf input.scad`), tries 3MF first (preserves colors), falls back to STL
-- **3D engine**: three.js with MeshStandardMaterial, RoomEnvironment, EdgesGeometry, raycaster picking
-- **Terminal**: xterm.js + node-pty, spawns `claude` directly
-- **Editor**: Monaco with custom Monarch grammar for OpenSCAD
-- **MCP**: Spawns `openscad-mcp-server` as a JSON-RPC subprocess for direct render/validate access
+- **Rendering**: OpenSCAD CLI (`openscad -o output.3mf input.scad`), 3MF first, falls back to STL
+- **MCP**: `openscad-mcp-server` subprocess, JSON-RPC, exposes render/validate/analyze tools to Claude
+
+## Related
+
+- [SmartSCAD](https://github.com/toyuvalo/SmartSCAD) — fork using Anthropic/OpenAI APIs directly instead of the Claude Code CLI
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-OpenSCAD (GPLv2+) and Claude Code (Apache 2.0) are launched as separate subprocesses. ClawSCAD does not incorporate or link against code from either project.
