@@ -35,7 +35,7 @@ test.afterAll(async () => {
   fs.rmSync(TEST_WORKSPACE, { recursive: true, force: true });
 });
 
-// ── Window & Layout Tests ────────────────────────────────────────────
+//  Window & Layout Tests 
 
 test.describe('Window & Layout', () => {
   test('window launches with correct title', async () => {
@@ -87,7 +87,7 @@ test.describe('Window & Layout', () => {
   });
 });
 
-// ── ClawSCAD Menu Tests ─────────────────────────────────────────────
+//  ClawSCAD Menu Tests 
 
 test.describe('ClawSCAD Menu', () => {
   test('menu is hidden by default', async () => {
@@ -119,7 +119,7 @@ test.describe('ClawSCAD Menu', () => {
     await page.locator('#app-menu-btn').click();
     const menu = page.locator('#app-menu');
     await expect(menu).not.toHaveClass(/hidden/);
-    // Click the status bar — always below the open menu, never covered by it
+    // Click the status bar  always below the open menu, never covered by it
     await page.locator('#status-bar').click();
     await expect(menu).toHaveClass(/hidden/);
   });
@@ -133,7 +133,7 @@ test.describe('ClawSCAD Menu', () => {
   });
 });
 
-// ── Viewport Toolbar Tests ──────────────────────────────────────────
+//  Viewport Toolbar Tests 
 
 test.describe('Viewport Toolbar', () => {
   test('toolbar buttons are injected into left/right containers', async () => {
@@ -182,7 +182,7 @@ test.describe('Viewport Toolbar', () => {
   });
 });
 
-// ── Editor Panel Tests ──────────────────────────────────────────────
+//  Editor Panel Tests 
 
 test.describe('Editor Panel', () => {
   test('editor panel starts collapsed', async () => {
@@ -208,7 +208,7 @@ test.describe('Editor Panel', () => {
   });
 });
 
-// ── Render Overlay Tests ────────────────────────────────────────────
+//  Render Overlay Tests 
 
 test.describe('Render Overlay', () => {
   test('overlay is hidden by default', async () => {
@@ -226,7 +226,7 @@ test.describe('Render Overlay', () => {
   });
 });
 
-// ── Part Properties Panel Tests ─────────────────────────────────────
+//  Part Properties Panel Tests 
 
 test.describe('Part Properties', () => {
   test('properties panel is hidden by default', async () => {
@@ -254,7 +254,7 @@ test.describe('Part Properties', () => {
   });
 });
 
-// ── Session Browser Tests ───────────────────────────────────────────
+//  Session Browser Tests 
 
 test.describe('Session Browser', () => {
   test('session dropdown is hidden by default', async () => {
@@ -275,13 +275,13 @@ test.describe('Session Browser', () => {
   });
 });
 
-// ── Workspace Initialization Tests ──────────────────────────────────
+//  Workspace Initialization Tests 
 
 test.describe('Workspace Setup', () => {
-  test('CLAUDE.md is created in workspace', async () => {
-    const claudeMd = path.join(TEST_WORKSPACE, 'CLAUDE.md');
-    expect(fs.existsSync(claudeMd)).toBe(true);
-    const content = fs.readFileSync(claudeMd, 'utf-8');
+  test('AGENTS.md is created in workspace', async () => {
+    const agentsMd = path.join(TEST_WORKSPACE, 'AGENTS.md');
+    expect(fs.existsSync(agentsMd)).toBe(true);
+    const content = fs.readFileSync(agentsMd, 'utf-8');
     expect(content).toContain('MANDATORY RULES');
     expect(content).toContain('NEVER modify or overwrite');
     expect(content).toContain('color()');
@@ -289,22 +289,22 @@ test.describe('Workspace Setup', () => {
   });
 
   test('MCP server config is created with command and openscad path', async () => {
-    const settings = path.join(TEST_WORKSPACE, '.claude', 'settings.json');
-    expect(fs.existsSync(settings)).toBe(true);
-    const config = JSON.parse(fs.readFileSync(settings, 'utf-8'));
-    expect(config.mcpServers).toBeDefined();
-    expect(config.mcpServers.openscad).toBeDefined();
-    expect(config.mcpServers.openscad.command).toBe('npx');
-    // Bundled binary path should be passed so MCP server uses the same OpenSCAD
-    expect(config.mcpServers.openscad.env).toBeDefined();
-    expect(config.mcpServers.openscad.env.OPENSCAD_PATH).toBeTruthy();
+    const configFile = path.join(TEST_WORKSPACE, '.codex', 'config.toml');
+    expect(fs.existsSync(configFile)).toBe(true);
+    const config = fs.readFileSync(configFile, 'utf-8');
+    expect(config).toContain('[mcp_servers.openscad]');
+    expect(config).toContain('command = "npx"');
+    expect(config).toContain('openscad-mcp-server');
+    expect(config).toContain('[mcp_servers.openscad.env]');
+    expect(config).toContain('OPENSCAD_PATH = ');
   });
 
   test('MCP OPENSCAD_PATH points to an existing binary', async () => {
-    const settings = path.join(TEST_WORKSPACE, '.claude', 'settings.json');
-    const config = JSON.parse(fs.readFileSync(settings, 'utf-8'));
-    const binPath = config.mcpServers.openscad.env.OPENSCAD_PATH;
-    // Path must exist (bundled vendors/ AppImage) or be a system fallback name
+    const configFile = path.join(TEST_WORKSPACE, '.codex', 'config.toml');
+    const content = fs.readFileSync(configFile, 'utf-8');
+    const match = content.match(/OPENSCAD_PATH\s*=\s*\"([^\"]+)\"/);
+    expect(match).toBeTruthy();
+    const binPath = match[1];
     const isBundled = fs.existsSync(binPath);
     const isSystemFallback = binPath === 'openscad';
     expect(isBundled || isSystemFallback).toBe(true);
@@ -323,7 +323,7 @@ test.describe('Workspace Setup', () => {
   });
 });
 
-// ── Checkpoint Creation Tests ───────────────────────────────────────
+//  Checkpoint Creation Tests 
 
 test.describe('Checkpoint System', () => {
   test('creating a .scad file adds a checkpoint', async () => {
@@ -357,8 +357,8 @@ test.describe('Checkpoint System', () => {
   });
 });
 
-// ── Render Pipeline Tests ───────────────────────────────────────────
-// These tests verify the full path: .scad file → OpenSCAD subprocess → 3D model in viewport.
+//  Render Pipeline Tests 
+// These tests verify the full path: .scad file  OpenSCAD subprocess  3D model in viewport.
 // They catch regressions in binary resolution, process spawning, and model loading.
 
 test.describe('Render Pipeline', () => {
@@ -450,7 +450,7 @@ test.describe('Render Pipeline', () => {
     const scad1 = path.join(TEST_WORKSPACE, 'queue-first.scad');
     const scad2 = path.join(TEST_WORKSPACE, 'queue-second.scad');
     fs.writeFileSync(scad1, '// First in queue\ncube(10);');
-    // Write second immediately — should queue behind first
+    // Write second immediately  should queue behind first
     fs.writeFileSync(scad2, '// Second in queue\nsphere(5);');
 
     const [ok1, ok2] = await Promise.all([
@@ -462,7 +462,7 @@ test.describe('Render Pipeline', () => {
   });
 });
 
-// ── Keyboard Shortcuts Tests ────────────────────────────────────────
+//  Keyboard Shortcuts Tests 
 
 test.describe('Keyboard Shortcuts', () => {
   test('F5 triggers re-render (global)', async () => {
@@ -479,7 +479,7 @@ test.describe('Keyboard Shortcuts', () => {
   });
 });
 
-// ── Three.js Canvas Tests ───────────────────────────────────────────
+//  Three.js Canvas Tests 
 
 test.describe('3D Viewport', () => {
   test('canvas element exists in viewport', async () => {
@@ -495,7 +495,7 @@ test.describe('3D Viewport', () => {
   });
 });
 
-// ── Toast System Tests ──────────────────────────────────────────────
+//  Toast System Tests 
 
 test.describe('Toast Notifications', () => {
   test('showToast creates a visible toast', async () => {
@@ -512,7 +512,7 @@ test.describe('Toast Notifications', () => {
   });
 });
 
-// ── Multi-Window Tests ──────────────────────────────────────────────
+//  Multi-Window Tests 
 
 test.describe('Multi-Window', () => {
   test('max 4 windows enforced', async () => {
@@ -520,3 +520,5 @@ test.describe('Multi-Window', () => {
     expect(count).toBe(1);
   });
 });
+
+
