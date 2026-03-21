@@ -1,6 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
-const { _electron: electron } = require('@playwright/test');
+const { _electron: electron } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -520,5 +520,3 @@ test.describe('Multi-Window', () => {
     expect(count).toBe(1);
   });
 });
-
-

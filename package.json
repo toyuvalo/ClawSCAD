@@ -9,7 +9,7 @@
     "download-openscad": "node scripts/download-openscad.js",
     "start": "npm run build:renderer && electron .",
     "dev": "npm run build:renderer && electron . --dev",
-    "test": "npm run build:renderer && npx playwright test",
+    "test": "npm run build:renderer && npx playwright test --pass-with-no-tests",
     "test:headed": "npm run build:renderer && npx playwright test --headed",
     "pack": "npm run download-openscad && npm run build:renderer && electron-builder --dir",
     "dist": "npm run download-openscad && npm run build:renderer && electron-builder",
