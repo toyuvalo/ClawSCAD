@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -37,9 +37,9 @@ const STATE_FILE = 'clawscad.json';
 const ACTIVE_FILE = 'active.scad';
 const MAX_WINDOWS = 4;
 
-// ── OpenSCAD MCP Client ─────────────────────────────────────────────────
+//  OpenSCAD MCP Client 
 // Spawns openscad-mcp-server as a subprocess and calls its tools via JSON-RPC.
-// This gives ClawSCAD direct rendering/validation without relying on Claude's MCP.
+// This gives ClawSCAD direct rendering/validation without relying on Codex's MCP.
 
 class McpClient {
   constructor() {
@@ -69,7 +69,7 @@ class McpClient {
     });
 
     this.proc.stderr.on('data', (chunk) => {
-      // MCP server logs go to stderr — ignore unless debugging
+      // MCP server logs go to stderr  ignore unless debugging
     });
 
     this.proc.on('exit', () => {
@@ -173,9 +173,9 @@ class McpClient {
 
 const mcpClient = new McpClient();
 
-// ── Multi-Window State ──────────────────────────────────────────────────
+//  Multi-Window State 
 // Each BrowserWindow gets its own context: workspace, checkpoints, pty, watcher.
-// Claude in each window sees all other open workspaces via CLAUDE.md.
+// Codex in each window sees all other open workspaces via AGENTS.md.
 
 const windows = new Map(); // webContents.id -> ctx
 
@@ -183,7 +183,7 @@ function getCtx(event) {
   return windows.get(event.sender.id);
 }
 
-// ── Open / Close Windows ────────────────────────────────────────────────
+//  Open / Close Windows 
 
 function openWindow(wsDir) {
   if (windows.size >= MAX_WINDOWS) return null;
@@ -226,7 +226,7 @@ function openWindow(wsDir) {
   startTerminal(ctx);
   startFileWatcher(ctx);
 
-  win.setTitle(`ClawSCAD — ${ctx.workspaceDir}`);
+  win.setTitle(`ClawSCAD  ${ctx.workspaceDir}`);
 
   win.webContents.once('did-finish-load', () => {
     sendCheckpoints(ctx);
@@ -252,22 +252,22 @@ function openWindow(wsDir) {
     if (ctx.ptyProcess2) try { ctx.ptyProcess2.kill(); } catch {}
     ctx.window = null; // Mark as destroyed so ctxSend won't touch it
     windows.delete(wcId);
-    updateAllClaudeMd();
+    updateAllAgentsMd();
   });
 
-  updateAllClaudeMd();
+  updateAllAgentsMd();
   addRecentPath(wsDir);
   return ctx;
 }
 
-// ── Workspace Init ──────────────────────────────────────────────────────
+//  Workspace Init 
 
-const CLAUDE_MD_RULES = `## File Rules (NEVER break these)
+const AGENTS_MD_RULES = `## File Rules (NEVER break these)
 - **NEVER modify or overwrite an existing .scad file.** Every .scad file is an immutable checkpoint. Overwriting one destroys the user's version history. Always create a NEW file.
 - **Name each .scad file** with a short creative descriptive name in kebab-case (max 30 characters, no sequential numbers). The name should hint at what changed. Good: \`hollow-shaft-gear.scad\`, \`rounded-blue-body.scad\`, \`tapered-legs-v2.scad\`. Bad: \`model_003.scad\`, \`update.scad\`.
 - **First line of every .scad file MUST be a comment** describing what this version adds or changes, e.g.: \`// Hollowed center, added 6 bolt holes around the flange\`. This is shown to the user as a tooltip in the checkpoint history.
 
-## Colors — use them extensively
+## Colors  use them extensively
 OpenSCAD's \`color()\` function is fully supported. **Color every part** of your models to make them visually clear:
 \`\`\`scad
 color("SteelBlue") body();
@@ -280,46 +280,46 @@ When the user asks to change colors, create a new file (never modify the old one
 ## Workflow
 1. Read \`active.scad\` to understand the current model
 2. Create a new .scad file building on it (never modify the original)
-3. **Use the OpenSCAD MCP server to validate your work** — this is critical:
+3. **Use the OpenSCAD MCP server to validate your work**  this is critical:
    - After creating a .scad file, use the MCP \`render\` tool to render it and visually inspect the result
    - Use \`validate_scad\` to check for syntax errors before rendering
    - Use \`analyze_model\` to check bounding box and dimensions match what the user asked for
    - If the render shows problems, create a new fixed .scad file (still never modify the broken one)
    - Use \`render_perspectives\` to check the model from multiple angles
 4. The app auto-detects new .scad files and adds them to the checkpoint history tree
-5. Users can click any checkpoint to go back and branch from it — every file is permanent
+5. Users can click any checkpoint to go back and branch from it  every file is permanent
 
 ## MCP Tools Available
-You have access to the \`openscad\` MCP server with these tools — **use them proactively**:
-- \`render_single\` / \`render_perspectives\` — render the model to see what it looks like
-- \`validate_scad\` — check syntax before rendering (saves time)
-- \`analyze_model\` — get bounding box, dimensions, triangle count
-- \`export\` — export to STL, 3MF, AMF, etc.
-- \`check_openscad\` — verify OpenSCAD is installed and working
-- \`get_libraries\` — discover installed OpenSCAD libraries
+You have access to the \`openscad\` MCP server with these tools  **use them proactively**:
+- \`render_single\` / \`render_perspectives\`  render the model to see what it looks like
+- \`validate_scad\`  check syntax before rendering (saves time)
+- \`analyze_model\`  get bounding box, dimensions, triangle count
+- \`export\`  export to STL, 3MF, AMF, etc.
+- \`check_openscad\`  verify OpenSCAD is installed and working
+- \`get_libraries\`  discover installed OpenSCAD libraries
 
-**Always render and visually verify your output.** Don't just write code and hope — use the MCP tools to see the result and iterate if needed.
+**Always render and visually verify your output.** Don't just write code and hope  use the MCP tools to see the result and iterate if needed.
 
 ## Auto-Iteration
 ClawSCAD automatically validates your .scad files when they are created. If a render fails:
 - Errors are written to \`RENDER_ERRORS.md\` in this workspace
 - You will receive a message asking you to fix the issue
 - **Read RENDER_ERRORS.md**, understand the problem, and create a NEW fixed .scad file
-- Keep iterating until the render succeeds — don't present broken models to the user
+- Keep iterating until the render succeeds  don't present broken models to the user
 - Only stop when you have a clean render with no errors`;
 
-function updateAllClaudeMd() {
+function updateAllAgentsMd() {
   // Filter out destroyed windows
   const live = Array.from(windows.values()).filter((c) => c.window !== null);
   const allWorkspaces = live.map((c) => c.workspaceDir);
   for (const ctx of live) {
-    try { writeClaudeMd(ctx, allWorkspaces); } catch {}
+    try { writeAgentsMd(ctx, allWorkspaces); } catch {}
   }
 }
 
-function writeClaudeMd(ctx, allWorkspaces) {
+function writeAgentsMd(ctx, allWorkspaces) {
   const others = allWorkspaces.filter((w) => w !== ctx.workspaceDir);
-  let md = `# ClawSCAD Workspace — MANDATORY RULES\n\n${CLAUDE_MD_RULES}\n`;
+  let md = `# ClawSCAD Workspace  MANDATORY RULES\n\n${AGENTS_MD_RULES}\n`;
 
   if (others.length > 0) {
     md += `\n## Multi-Project Context\n`;
@@ -336,33 +336,38 @@ function writeClaudeMd(ctx, allWorkspaces) {
     md += `You can read any file from these paths. If the user asks you to combine or reference designs from other projects, read the relevant .scad files directly.\n`;
   }
 
-  fs.writeFileSync(path.join(ctx.workspaceDir, 'CLAUDE.md'), md);
+  fs.writeFileSync(path.join(ctx.workspaceDir, 'AGENTS.md'), md);
 }
 
+function codexHome(ctx) {
+  return path.join(ctx.workspaceDir, '.codex');
+}
+
+function writeCodexConfig(ctx) {
+  const cHome = codexHome(ctx);
+  fs.mkdirSync(cHome, { recursive: true });
+  const configFile = path.join(cHome, 'config.toml');
+  const esc = OPENSCAD_BIN.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const config = [
+    '# Auto-generated by ClawSCAD',
+    'project_doc_fallback_filenames = [".agents.md"]',
+    '',
+    '[mcp_servers.openscad]',
+    'command = "npx"',
+    'args = ["-y", "openscad-mcp-server"]',
+    '',
+    '[mcp_servers.openscad.env]',
+    `OPENSCAD_PATH = "${esc}"`,
+    '',
+  ].join('\n');
+  fs.writeFileSync(configFile, config);
+}
 function initWorkspace(ctx) {
   fs.mkdirSync(ctx.workspaceDir, { recursive: true });
-
-  // MCP server config — merge into existing settings
-  const claudeDir = path.join(ctx.workspaceDir, '.claude');
-  const settingsFile = path.join(claudeDir, 'settings.json');
-  fs.mkdirSync(claudeDir, { recursive: true });
-  let settings = {};
-  try {
-    if (fs.existsSync(settingsFile)) {
-      settings = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
-    }
-  } catch {}
-  if (!settings.mcpServers) settings.mcpServers = {};
-  settings.mcpServers.openscad = {
-    command: 'npx',
-    args: ['-y', 'openscad-mcp-server'],
-    // Point the MCP server at the same bundled binary ClawSCAD uses
-    env: { OPENSCAD_PATH: OPENSCAD_BIN },
-  };
-  fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+  writeCodexConfig(ctx);
 }
 
-// ── State Management ────────────────────────────────────────────────────
+//  State Management 
 
 function statePath(ctx) {
   return path.join(ctx.workspaceDir, STATE_FILE);
@@ -406,20 +411,50 @@ function getEncodedCwd(dir) {
   return dir.replace(/\//g, '-').replace(/^-/, '');
 }
 
+function codexSessionsDir() {
+  return path.join(os.homedir(), '.codex', 'sessions');
+}
+
+function collectSessionFiles(rootDir) {
+  const out = [];
+  if (!fs.existsSync(rootDir)) return out;
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const ent of entries) {
+      const fp = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        stack.push(fp);
+      } else if (ent.isFile() && ent.name.endsWith('.jsonl')) {
+        out.push(fp);
+      }
+    }
+  }
+  return out;
+}
+
 function detectCurrentSessionId(ctx) {
-  const encoded = getEncodedCwd(ctx.workspaceDir);
-  const projectDir = path.join(os.homedir(), '.claude', 'projects', encoded);
+  const sessionFiles = collectSessionFiles(codexSessionsDir());
+  const wsNorm = path.resolve(ctx.workspaceDir).toLowerCase();
   try {
-    if (!fs.existsSync(projectDir)) return null;
-    const files = fs
-      .readdirSync(projectDir)
-      .filter((f) => f.endsWith('.jsonl'))
-      .map((f) => ({
-        name: path.basename(f, '.jsonl'),
-        mtime: fs.statSync(path.join(projectDir, f)).mtimeMs,
-      }))
-      .sort((a, b) => b.mtime - a.mtime);
-    return files.length > 0 ? files[0].name : null;
+    const scored = sessionFiles
+      .map((fp) => {
+        const stat = fs.statSync(fp);
+        let score = stat.mtimeMs;
+        try {
+          const head = fs.readFileSync(fp, 'utf-8').slice(0, 12000).toLowerCase();
+          if (head.includes(wsNorm)) score += 1e15;
+        } catch {}
+        return { fp, score };
+      })
+      .sort((a, b) => b.score - a.score);
+    return scored.length > 0 ? path.basename(scored[0].fp, '.jsonl') : null;
   } catch {
     return null;
   }
@@ -486,7 +521,7 @@ function sendCheckpoints(ctx) {
   ctxSend(ctx, 'checkpoint:update', ctx.state);
 }
 
-// ── Render Queue ────────────────────────────────────────────────────────
+//  Render Queue 
 
 function enqueueRender(ctx, scadPath) {
   ctx.renderQueue = ctx.renderQueue.filter((p) => p !== scadPath);
@@ -520,7 +555,7 @@ function processRenderQueue(ctx) {
         error: errorText,
         errors,
       });
-      // Auto-iteration: write errors so Claude can see them and nudge the terminal
+      // Auto-iteration: write errors so Codex can see them and nudge the terminal
       writeRenderErrors(ctx, path.basename(scadPath), errorText, errors);
     } else {
       if (stderr && stderr.includes('WARNING')) {
@@ -547,7 +582,7 @@ function parseOpenSCADErrors(stderr) {
 }
 
 function writeRenderErrors(ctx, filename, errorText, errors) {
-  // Write a RENDER_ERRORS.md that Claude can read to understand what went wrong
+  // Write a RENDER_ERRORS.md that Codex can read to understand what went wrong
   const errFile = path.join(ctx.workspaceDir, 'RENDER_ERRORS.md');
   const errorLines = errors.map((e) => `- Line ${e.line}: ${e.message}`).join('\n');
   fs.writeFileSync(
@@ -559,13 +594,13 @@ function writeRenderErrors(ctx, filename, errorText, errors) {
       `## Raw Output\n\`\`\`\n${errorText.substring(0, 2000)}\n\`\`\`\n`
   );
 
-  // Send a nudge to Claude's terminal — a visible prompt that there are errors to fix
+  // Send a nudge to Codex's terminal  a visible prompt that there are errors to fix
   if (ctx.ptyProcess) {
-    // Only nudge if Claude seems idle (don't interrupt mid-generation)
+    // Only nudge if Codex seems idle (don't interrupt mid-generation)
     // Write to pty so it appears in the conversation as user input
     const nudge =
       `The render of ${filename} failed. Read RENDER_ERRORS.md for details and create a fixed version.\n`;
-    // Small delay to avoid interrupting Claude mid-output
+    // Small delay to avoid interrupting Codex mid-output
     setTimeout(() => {
       if (ctx.ptyProcess) ctx.ptyProcess.write(nudge);
     }, 2000);
@@ -599,7 +634,7 @@ function ctxSend(ctx, channel, data) {
       ctx.window.webContents.send(channel, data);
     }
   } catch {
-    // Window was destroyed during send — safe to ignore
+    // Window was destroyed during send  safe to ignore
   }
 }
 
@@ -611,43 +646,57 @@ function sendFileContent(ctx, scadFilename) {
   } catch {}
 }
 
-// ── Session Discovery ───────────────────────────────────────────────────
+//  Session Discovery 
 
 function discoverSessions(ctx) {
-  const encoded = getEncodedCwd(ctx.workspaceDir);
-  const projectDir = path.join(os.homedir(), '.claude', 'projects', encoded);
+  const sessionFiles = collectSessionFiles(codexSessionsDir());
+  const wsNorm = path.resolve(ctx.workspaceDir).toLowerCase();
   const sessions = [];
   try {
-    if (!fs.existsSync(projectDir)) return sessions;
-    const files = fs.readdirSync(projectDir).filter((f) => f.endsWith('.jsonl'));
-    for (const file of files) {
-      const sessionId = path.basename(file, '.jsonl');
-      const fp = path.join(projectDir, file);
+    if (sessionFiles.length === 0) return sessions;
+    for (const fp of sessionFiles) {
+      const sessionId = path.basename(fp, '.jsonl');
       const stat = fs.statSync(fp);
       let firstMessage = '';
+      let belongsToWorkspace = false;
       try {
         const content = fs.readFileSync(fp, 'utf-8');
+        if (content.toLowerCase().includes(wsNorm)) belongsToWorkspace = true;
         for (const line of content.split('\n').filter(Boolean)) {
           try {
             const entry = JSON.parse(line);
-            if (entry.type === 'user' && entry.message) {
-              const msg = typeof entry.message === 'string'
-                ? entry.message
-                : entry.message.content || JSON.stringify(entry.message);
+            if (entry.type === 'user' && (entry.message || entry.content)) {
+              const raw = entry.message ?? entry.content;
+              const msg = typeof raw === 'string'
+                ? raw
+                : raw.content || JSON.stringify(raw);
               firstMessage = msg.substring(0, 80);
               break;
             }
           } catch {}
         }
       } catch {}
-      sessions.push({ sessionId, firstMessage, lastModified: stat.mtimeMs, date: stat.mtime.toISOString() });
+      if (belongsToWorkspace) {
+        sessions.push({ sessionId, firstMessage, lastModified: stat.mtimeMs, date: stat.mtime.toISOString() });
+      }
+    }
+    if (sessions.length === 0) {
+      for (const fp of sessionFiles) {
+        const stat = fs.statSync(fp);
+        sessions.push({
+          sessionId: path.basename(fp, '.jsonl'),
+          firstMessage: '',
+          lastModified: stat.mtimeMs,
+          date: stat.mtime.toISOString(),
+        });
+      }
     }
     sessions.sort((a, b) => b.lastModified - a.lastModified);
   } catch {}
   return sessions;
 }
 
-// ── Terminal ────────────────────────────────────────────────────────────
+//  Terminal 
 
 function spawnPty(ctx, cmd, args = []) {
   const proc = pty.spawn(cmd, args, {
@@ -655,7 +704,12 @@ function spawnPty(ctx, cmd, args = []) {
     cols: 80,
     rows: 24,
     cwd: ctx.workspaceDir,
-    env: { ...process.env, COLORTERM: 'truecolor' },
+    env: {
+      ...process.env,
+      COLORTERM: 'truecolor',
+      CODEX_HOME: codexHome(ctx),
+      CODEX_SQLITE_HOME: path.join(codexHome(ctx), 'sqlite'),
+    },
   });
   proc.onData((data) => ctxSend(ctx, 'terminal:data', data));
   return proc;
@@ -667,7 +721,12 @@ function spawnPty2(ctx, cmd, args = []) {
     cols: 80,
     rows: 24,
     cwd: ctx.workspaceDir,
-    env: { ...process.env, COLORTERM: 'truecolor' },
+    env: {
+      ...process.env,
+      COLORTERM: 'truecolor',
+      CODEX_HOME: codexHome(ctx),
+      CODEX_SQLITE_HOME: path.join(codexHome(ctx), 'sqlite'),
+    },
   });
   proc.onData((data) => ctxSend(ctx, 'terminal2:data', data));
   return proc;
@@ -676,7 +735,7 @@ function spawnPty2(ctx, cmd, args = []) {
 function startTerminal(ctx) {
   const shell = process.env.SHELL || '/bin/bash';
   try {
-    ctx.ptyProcess = spawnPty(ctx, 'claude', []);
+    ctx.ptyProcess = spawnPty(ctx, 'codex', []);
   } catch {
     ctx.ptyProcess = spawnPty(ctx, shell, []);
   }
@@ -689,7 +748,7 @@ function startTerminal(ctx) {
 function restartTerminal(ctx, args = []) {
   if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
   try {
-    ctx.ptyProcess = spawnPty(ctx, 'claude', args);
+    ctx.ptyProcess = spawnPty(ctx, 'codex', args);
   } catch {
     ctx.ptyProcess = spawnPty(ctx, process.env.SHELL || '/bin/bash', []);
   }
@@ -699,7 +758,7 @@ function restartTerminal(ctx, args = []) {
   });
 }
 
-// ── File Watcher ────────────────────────────────────────────────────────
+//  File Watcher 
 
 function startFileWatcher(ctx) {
   ctx.fileWatcher = chokidar.watch(ctx.workspaceDir, {
@@ -736,7 +795,7 @@ function handleFileEvent(ctx, filePath) {
   }
 }
 
-// ── IPC Handlers ────────────────────────────────────────────────────────
+//  IPC Handlers 
 
 ipcMain.on('terminal:input', (event, data) => {
   const ctx = getCtx(event);
@@ -747,7 +806,7 @@ ipcMain.handle('terminal2:spawn', (event) => {
   const ctx = getCtx(event);
   if (!ctx || ctx.ptyProcess2) return;
   try {
-    ctx.ptyProcess2 = spawnPty2(ctx, 'claude', []);
+    ctx.ptyProcess2 = spawnPty2(ctx, 'codex', []);
   } catch {
     ctx.ptyProcess2 = spawnPty2(ctx, process.env.SHELL || '/bin/bash', []);
   }
@@ -817,12 +876,12 @@ ipcMain.handle('sessions:new', (event) => {
 
 ipcMain.handle('sessions:continue', (event) => {
   const ctx = getCtx(event);
-  if (ctx) restartTerminal(ctx, ['--continue']);
+  if (ctx) restartTerminal(ctx, ['resume', '--last']);
 });
 
 ipcMain.handle('sessions:resume', (event, sessionId) => {
   const ctx = getCtx(event);
-  if (ctx) restartTerminal(ctx, ['--resume', sessionId]);
+  if (ctx) restartTerminal(ctx, ['resume', sessionId]);
 });
 
 ipcMain.handle('checkpoint:select', (event, id) => {
@@ -835,7 +894,7 @@ ipcMain.handle('checkpoint:restore-session', (event, id) => {
   if (!ctx) return false;
   const cp = ctx.state.checkpoints[id];
   if (cp && cp.sessionId) {
-    restartTerminal(ctx, ['--resume', cp.sessionId]);
+    restartTerminal(ctx, ['resume', cp.sessionId]);
     return true;
   }
   return false;
@@ -863,7 +922,7 @@ ipcMain.handle('checkpoint:delete', (event, id) => {
   sendCheckpoints(ctx);
 });
 
-// ── MCP Direct Access ───────────────────────────────────────────────────
+//  MCP Direct Access 
 
 ipcMain.handle('mcp:render-png', async (event, scadCode, opts) => {
   try {
@@ -939,9 +998,9 @@ ipcMain.handle('app:open-workspace', async (event) => {
     loadState(ctx);
     startTerminal(ctx);
     startFileWatcher(ctx);
-    ctx.window.setTitle(`ClawSCAD — ${ctx.workspaceDir}`);
+    ctx.window.setTitle(`ClawSCAD  ${ctx.workspaceDir}`);
     sendCheckpoints(ctx);
-    updateAllClaudeMd();
+    updateAllAgentsMd();
     return ctx.workspaceDir;
   }
   return null;
@@ -1055,9 +1114,9 @@ ipcMain.handle('app:open-path', async (event, inputPath) => {
       loadState(ctx);
       startTerminal(ctx);
       startFileWatcher(ctx);
-      ctx.window.setTitle(`ClawSCAD — ${ctx.workspaceDir}`);
+      ctx.window.setTitle(`ClawSCAD  ${ctx.workspaceDir}`);
       sendCheckpoints(ctx);
-      updateAllClaudeMd();
+      updateAllAgentsMd();
       addRecentPath(inputPath);
       return { type: 'workspace', path: inputPath };
     } else if (stat.isFile() && inputPath.endsWith('.scad')) {
@@ -1078,7 +1137,7 @@ ipcMain.handle('app:toggle-devtools', (event) => {
 
 ipcMain.handle('app:window-count', () => windows.size);
 
-// ── App Lifecycle ───────────────────────────────────────────────────────
+//  App Lifecycle 
 
 app.whenReady().then(async () => {
   // Start the MCP server early so it's warm by the time we need it
@@ -1093,3 +1152,13 @@ app.on('window-all-closed', () => {
   mcpClient.stop();
   app.quit();
 });
+
+
+
+
+
+
+
+
+
+

@@ -1,7 +1,7 @@
 {
   "name": "clawscad",
   "version": "0.1.0",
-  "description": "AI-powered 3D CAD — OpenSCAD + Claude Code with checkpoint branching",
+  "description": "AI-powered 3D CAD  OpenSCAD + Codex CLI with checkpoint branching",
   "main": "main.js",
   "scripts": {
     "postinstall": "electron-rebuild -f -w node-pty",
@@ -95,3 +95,5 @@
   },
   "license": "MIT"
 }
+
+

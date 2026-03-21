@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 
-// ── Toast System ────────────────────────────────────────────────────────
+//  Toast System 
 
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -22,7 +22,7 @@ function showToast(message, type = 'info') {
   }, 4000);
 }
 
-// ── Monaco Editor Setup ─────────────────────────────────────────────────
+//  Monaco Editor Setup 
 
 // Register OpenSCAD language
 monaco.languages.register({ id: 'scad' });
@@ -123,7 +123,7 @@ const monacoEditor = monaco.editor.create(editorContainer, {
   find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never' },
 });
 
-// Ctrl+F (find) and Ctrl+H (replace) — open editor and trigger Monaco's built-in actions
+// Ctrl+F (find) and Ctrl+H (replace)  open editor and trigger Monaco's built-in actions
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'h')) {
     // Open editor panel if collapsed
@@ -189,7 +189,7 @@ window.api.onFileContent((data) => {
   if (model) monaco.editor.setModelMarkers(model, 'openscad', []);
 });
 
-// ── Terminal Setup ──────────────────────────────────────────────────────
+//  Terminal Setup 
 
 const term = new Terminal({
   fontSize: 14,
@@ -232,7 +232,7 @@ window.api.onTerminalData((data) => term.write(data));
 term.onData((data) => window.api.sendTerminalInput(data));
 term.onResize(({ cols, rows }) => window.api.resizeTerminal(cols, rows));
 
-// ── Second Terminal ─────────────────────────────────────────────────────
+//  Second Terminal 
 
 let term2 = null;
 let fitAddon2 = null;
@@ -290,7 +290,7 @@ const term2Observer = new ResizeObserver(() => {
 });
 term2Observer.observe(document.getElementById('terminal-2'));
 
-// ── 3D Viewport ─────────────────────────────────────────────────────────
+//  3D Viewport 
 
 const viewportEl = document.getElementById('viewport');
 const scene = new THREE.Scene();
@@ -358,7 +358,7 @@ orthoControls.enabled = false;
 
 let activeControls = perspControls;
 
-// Grid (XY plane — OpenSCAD Z-up convention)
+// Grid (XY plane  OpenSCAD Z-up convention)
 const grid = new THREE.GridHelper(200, 20, 0x2a2a55, 0x1a1a44);
 grid.rotation.x = Math.PI / 2;
 scene.add(grid);
@@ -382,7 +382,7 @@ const rimLight = new THREE.DirectionalLight(0x4444aa, 0.4);
 rimLight.position.set(0, 100, -100);
 scene.add(rimLight);
 
-// ── Model Management ────────────────────────────────────────────────────
+//  Model Management 
 
 let currentMesh = null;
 let currentEdges = null;
@@ -392,9 +392,9 @@ let wireframeMode = false;
 let modelBounds = null;
 const stlLoader = new STLLoader();
 
-// Cache: checkpointId → { mesh, edges, bounds }
+// Cache: checkpointId  { mesh, edges, bounds }
 // Keeps all previously loaded models in memory for instant switching.
-// Typical STL = a few MB of geometry — even 100 checkpoints is fine.
+// Typical STL = a few MB of geometry  even 100 checkpoints is fine.
 const modelCache = new Map();
 
 const modelMaterial = new THREE.MeshStandardMaterial({
@@ -600,7 +600,7 @@ function load3MF(buffer, checkpointId) {
 
   // Validate, repair, and replace materials on all child meshes.
   // ThreeMFLoader creates MeshPhongMaterial which doesn't work with PBR
-  // env map lighting — replace with MeshStandardMaterial clones.
+  // env map lighting  replace with MeshStandardMaterial clones.
   let repairCount = 0;
   group.traverse((child) => {
     if (child.isMesh) {
@@ -677,7 +677,7 @@ function fitCameraToModel() {
   );
 }
 
-// ── Camera Animation ────────────────────────────────────────────────────
+//  Camera Animation 
 
 let cameraTarget = null;
 const LERP_SPEED = 0.1;
@@ -697,7 +697,7 @@ function setCameraViewInstant(position, lookAt) {
   cameraTarget = null;
 }
 
-// ── View Presets ────────────────────────────────────────────────────────
+//  View Presets 
 
 function getViewDistance() {
   return modelBounds ? modelBounds.maxDim * 1.4 : 80;
@@ -737,7 +737,7 @@ const VIEW_PRESETS = {
   },
 };
 
-// ── Orthographic Camera ─────────────────────────────────────────────────
+//  Orthographic Camera 
 
 function syncOrthoFrustum() {
   const w = viewportEl.clientWidth;
@@ -777,7 +777,7 @@ function toggleProjection() {
   showToast(isOrtho ? 'Orthographic projection' : 'Perspective projection');
 }
 
-// ── Viewport Toolbar ────────────────────────────────────────────────────
+//  Viewport Toolbar 
 
 const TOOLBAR_BUTTONS = [
   {
@@ -939,7 +939,7 @@ function buildViewPresets() {
 buildToolbar();
 buildViewPresets();
 
-// ── Rendering Overlay ───────────────────────────────────────────────────
+//  Rendering Overlay 
 
 const renderOverlay = document.getElementById('render-overlay');
 const renderTimeEl = document.getElementById('render-time');
@@ -992,7 +992,7 @@ function updateRenderTimer() {
   renderTimeEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-// ── IPC Handlers ────────────────────────────────────────────────────────
+//  IPC Handlers 
 
 window.api.onRenderStart((data) => {
   showRenderOverlay(data.file);
@@ -1046,7 +1046,7 @@ window.api.onModelUpdate((update) => {
   }
 });
 
-// ── Checkpoint Tree ─────────────────────────────────────────────────────
+//  Checkpoint Tree 
 
 const treeEl = document.getElementById('checkpoint-tree');
 let checkpointState = { checkpoints: {}, active: null };
@@ -1059,7 +1059,7 @@ function renderTree() {
 
   if (Object.keys(checkpoints).length === 0) {
     treeEl.innerHTML =
-      '<div class="cp-empty">No checkpoints yet.<br>Ask Claude to create a model!</div>';
+      '<div class="cp-empty">No checkpoints yet.<br>Ask Codex to create a model!</div>';
     return;
   }
 
@@ -1221,7 +1221,7 @@ function renderTree() {
   }
 }
 
-// ── Inline Rename & Delete Confirm ───────────────────────────────────────
+//  Inline Rename & Delete Confirm 
 
 function showRenameInput(cpId, currentName) {
   // Find the node in the tree and replace the label with an input
@@ -1280,7 +1280,7 @@ function showDeleteConfirm(cpId, name) {
   });
 }
 
-// ── Checkpoint Context Menu Actions ──────────────────────────────────────
+//  Checkpoint Context Menu Actions 
 
 const cpContextMenu = document.getElementById('cp-context-menu');
 
@@ -1328,7 +1328,7 @@ cpContextMenu.addEventListener('click', async (e) => {
     }
     case 'branch-here': {
       window.api.selectCheckpoint(id);
-      showToast(`Branching from "${cp?.label || cp?.file}" — next model will be a child`, 'info');
+      showToast(`Branching from "${cp?.label || cp?.file}"  next model will be a child`, 'info');
       break;
     }
   }
@@ -1378,7 +1378,7 @@ window.api.getCheckpoints().then((state) => {
   renderTree();
 });
 
-// ── Session Browser ─────────────────────────────────────────────────────
+//  Session Browser 
 
 const sessionBtn = document.getElementById('session-btn');
 const sessionDropdown = document.getElementById('session-dropdown');
@@ -1450,14 +1450,14 @@ async function loadSessions() {
   }
 }
 
-// ── Status Bar ──────────────────────────────────────────────────────────
+//  Status Bar 
 
 const statusEl = document.getElementById('status');
 function updateStatus(msg) {
   statusEl.textContent = msg;
 }
 
-// Workspace path in header — show ~ instead of full home path
+// Workspace path in header  show ~ instead of full home path
 let homeDirPrefix = '';
 function prettyPath(p) {
   if (homeDirPrefix && p.startsWith(homeDirPrefix)) {
@@ -1474,7 +1474,7 @@ window.api.getWorkspace().then((ws) => {
   if (pathEl) pathEl.textContent = prettyPath(ws);
 });
 
-// ── App Menu ────────────────────────────────────────────────────────────
+//  App Menu 
 
 const appMenuBtn = document.getElementById('app-menu-btn');
 const appMenu = document.getElementById('app-menu');
@@ -1537,7 +1537,7 @@ appMenu.addEventListener('click', async (e) => {
   }
 });
 
-// ── Color Swatches ──────────────────────────────────────────────────────
+//  Color Swatches 
 
 const defaultSwatches = ['#4488ff', '#ff5555', '#50fa7b', '#f1fa8c', '#ff79c6', '#8be9fd'];
 let swatchColors = JSON.parse(localStorage.getItem('clawscad-swatches') || 'null') || [...defaultSwatches];
@@ -1596,7 +1596,7 @@ swatchEditor.addEventListener('change', () => {
   editingSwatch = null;
 });
 
-// ── Export Buttons ──────────────────────────────────────────────────────
+//  Export Buttons 
 
 document.querySelectorAll('[data-export]').forEach((btn) => {
   btn.addEventListener('click', async () => {
@@ -1611,7 +1611,7 @@ document.querySelectorAll('[data-export]').forEach((btn) => {
   });
 });
 
-// ── Path Bar Dropdown ───────────────────────────────────────────────────
+//  Path Bar Dropdown 
 
 const wsPathBtn = document.getElementById('workspace-path-btn');
 const wsDropdown = document.getElementById('workspace-dropdown');
@@ -1670,7 +1670,7 @@ wsPathInput.addEventListener('keydown', (e) => {
 });
 
 async function openPathFromDropdown(inputPath) {
-  // First check if it's a directory — browse it
+  // First check if it's a directory  browse it
   const browseResult = await window.api.browseDir(inputPath);
   if (browseResult) {
     showFileBrowser(browseResult);
@@ -1706,7 +1706,7 @@ function showFileBrowser(browseResult) {
         const sub = await window.api.browseDir(entry.path);
         if (sub) showFileBrowser(sub);
       } else {
-        // It's a .scad file — open the parent as workspace
+        // It's a .scad file  open the parent as workspace
         const parentDir = browseResult.dir;
         const result = await window.api.openPath(parentDir);
         wsDropdown.classList.add('hidden');
@@ -1720,7 +1720,7 @@ function showFileBrowser(browseResult) {
   }
 }
 
-// ── Global Keyboard Shortcuts ────────────────────────────────────────────
+//  Global Keyboard Shortcuts 
 
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 'n') {
@@ -1734,7 +1734,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// ── Splitter ────────────────────────────────────────────────────────────
+//  Splitter 
 
 const splitter = document.getElementById('splitter');
 const leftPanel = document.getElementById('left-panel');
@@ -1767,7 +1767,7 @@ document.addEventListener('mouseup', () => {
   }
 });
 
-// ── Object Picking & Properties ──────────────────────────────────────────
+//  Object Picking & Properties 
 
 const raycaster = new THREE.Raycaster();
 const mouseNDC = new THREE.Vector2();
@@ -1945,7 +1945,7 @@ function refreshPropsPanel(mesh) {
   }
 }
 
-// ── Geometry Analysis ─────────────────────────────────────────────────
+//  Geometry Analysis 
 
 function computeVolume(geometry) {
   const pos = geometry.getAttribute('position');
@@ -2016,7 +2016,7 @@ function computeSurfaceArea(geometry) {
   return area;
 }
 
-// ── Keyboard Shortcuts ──────────────────────────────────────────────────
+//  Keyboard Shortcuts 
 
 viewportEl.addEventListener('keydown', (e) => {
   // Only handle when viewport is focused
@@ -2072,7 +2072,7 @@ viewportEl.addEventListener('click', (e) => {
   pickObject(e);
 });
 
-// ── Resize Handling ─────────────────────────────────────────────────────
+//  Resize Handling 
 
 const viewportObserver = new ResizeObserver(() => {
   const w = viewportEl.clientWidth;
@@ -2091,7 +2091,7 @@ const termObserver = new ResizeObserver(() => {
 });
 termObserver.observe(termEl);
 
-// ── Second Viewport (split view, shares the same scene) ─────────────────
+//  Second Viewport (split view, shares the same scene) 
 
 let viewport2 = null;
 
@@ -2197,7 +2197,7 @@ function addSecondViewport() {
   v2scene.environment = env2;
   pmrem2.dispose();
 
-  // Grid, axes, lights (duplicated — lightweight)
+  // Grid, axes, lights (duplicated  lightweight)
   const grid2 = new THREE.GridHelper(200, 20, 0x2a2a55, 0x1a1a44);
   grid2.rotation.x = Math.PI / 2;
   v2scene.add(grid2);
@@ -2342,14 +2342,14 @@ function addSecondViewport() {
     v2.editorFilename.textContent = cp.file;
     v2.editorContent.textContent = content || '// Could not read file';
 
-    // Load model — check for 3MF then STL
+    // Load model  check for 3MF then STL
     const basePath = scadPath.replace(/\.scad$/, '');
     let modelData = null;
     let format = 'stl';
 
     for (const [ext, fmt] of [['.3mf', '3mf'], ['.stl', 'stl']]) {
       const data = await window.api.readFile(basePath + ext);
-      // readFile returns string for text files — we need binary
+      // readFile returns string for text files  we need binary
       // Fall back to the main process render flow
       if (data !== null) { format = fmt; break; }
     }
@@ -2359,13 +2359,13 @@ function addSecondViewport() {
     // But that would change the primary viewport. Instead, load from file via IPC.
     v2.statusEl.textContent = `Loading ${cp.file}...`;
 
-    // Direct file read for binary model — use a special IPC
+    // Direct file read for binary model  use a special IPC
     const result = await window.api.readModelFile(basePath + (format === '3mf' ? '.3mf' : '.stl'), format);
     if (result && result.data) {
       v2LoadModel(result.data, format);
       v2.statusEl.textContent = cp.label || cp.file;
     } else {
-      v2.statusEl.textContent = 'No rendered model — select in primary viewport first';
+      v2.statusEl.textContent = 'No rendered model  select in primary viewport first';
     }
   }
 
@@ -2436,7 +2436,7 @@ function addSecondViewport() {
   document.addEventListener('mouseup', () => { if (midDragging) { midDragging = false; document.body.classList.remove('dragging'); }});
 
   viewport2 = v2;
-  showToast('Second viewport opened — click a checkpoint to load a model', 'info');
+  showToast('Second viewport opened  click a checkpoint to load a model', 'info');
 }
 
 function removeSecondViewport() {
@@ -2453,7 +2453,7 @@ function removeSecondViewport() {
   showToast('Viewport closed', 'info');
 }
 
-// ── Render Loop ─────────────────────────────────────────────────────────
+//  Render Loop 
 
 function animate() {
   requestAnimationFrame(animate);
@@ -2482,3 +2482,4 @@ function animate() {
 }
 
 animate();
+
