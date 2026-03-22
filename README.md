@@ -9,6 +9,8 @@
   OpenSCAD + Claude Code with checkpoint branching, auto-iteration, and live PBR viewport
 </p>
 
+<p align="center"><a href="https://webdev.dvlce.ca/openscad">Project page →</a></p>
+
 ---
 
 ClawSCAD wraps [OpenSCAD](https://openscad.org/) and [Claude Code](https://github.com/anthropics/claude-code) into a single Electron desktop app. Describe what you want to build, Claude writes the OpenSCAD code, the app renders it in a live 3D viewport, and every iteration is saved as an immutable checkpoint you can branch from at any time.
@@ -106,7 +108,8 @@ ClawSCAD/
 
 ## Related
 
-- [SmartSCAD](https://github.com/toyuvalo/SmartSCAD) — fork using Anthropic/OpenAI APIs directly instead of the Claude Code CLI
+- [SmartSCAD](https://github.com/toyuvalo/SmartSCAD) — fork with multi-provider CLI support (Claude, Codex, Gemini)
+- [webdev.dvlce.ca/openscad](https://webdev.dvlce.ca/openscad) — project page
 
 ## License
 
