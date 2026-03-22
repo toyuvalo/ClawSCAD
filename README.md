@@ -13,6 +13,8 @@
 
 ClawSCAD wraps [OpenSCAD](https://openscad.org/) and [Claude Code](https://github.com/anthropics/claude-code) into a single Electron desktop app. Describe what you want to build, Claude writes the OpenSCAD code, the app renders it in a live 3D viewport, and every iteration is saved as an immutable checkpoint you can branch from at any time.
 
+![ClawSCAD screenshot](screenshot.png)
+
 ## Features
 
 **3D Viewport**
@@ -108,4 +110,4 @@ ClawSCAD/
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT with [Commons Clause](https://commonsclause.com/) — free to use, modify, and share. Commercial resale not permitted.
