@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="icon.png" alt="ClawSCAD" width="128" height="128">
+  <img src="icon.png" alt="gemscad" width="128" height="128">
 </p>
 
-<h1 align="center">ClawSCAD</h1>
+<h1 align="center">gemscad</h1>
 
 <p align="center">
   <strong>AI-powered 3D CAD environment</strong><br>
@@ -10,14 +10,14 @@
 </p>
 
 <p align="center">
-  <img src="screenshot.png" alt="ClawSCAD Screenshot" width="900">
+  <img src="screenshot.png" alt="gemscad Screenshot" width="900">
 </p>
 
 ---
 
-## What is ClawSCAD?
+## What is gemscad?
 
-ClawSCAD glues together [OpenSCAD](https://openscad.org/) and [Claude Code](https://github.com/anthropics/claude-code) into a single desktop application. Tell Claude what to build, and it writes OpenSCAD code, renders it, validates the output, and auto-iterates until the model is correct — all while you watch in a live 3D viewport.
+gemscad glues together [OpenSCAD](https://openscad.org/) and [Claude Code](https://github.com/anthropics/claude-code) into a single desktop application. Tell Claude what to build, and it writes OpenSCAD code, renders it, validates the output, and auto-iterates until the model is correct — all while you watch in a live 3D viewport.
 
 Every iteration is saved as an immutable checkpoint. You can click any checkpoint to go back, branch from it, and explore different design directions. Claude sees your full history and can reference any previous version.
 
@@ -52,7 +52,7 @@ Every iteration is saved as an immutable checkpoint. You can click any checkpoin
 - Embedded terminal running Claude Code
 - OpenSCAD MCP server auto-configured for every workspace
 - CLAUDE.md with mandatory rules: never overwrite files, use colors, validate with MCP tools
-- Auto-iteration: when a render fails, ClawSCAD writes errors to RENDER_ERRORS.md and nudges Claude to fix them
+- Auto-iteration: when a render fails, gemscad writes errors to RENDER_ERRORS.md and nudges Claude to fix them
 - Session management: browse, resume, or start new Claude sessions
 - Dual terminal support (up to 2 Claude instances)
 - Multi-window support (up to 4 projects, Claude sees all workspaces)
@@ -65,8 +65,8 @@ Every iteration is saved as an immutable checkpoint. You can click any checkpoin
 ## Install
 
 ```bash
-git clone https://github.com/levkropp/ClawSCAD.git
-cd ClawSCAD
+git clone https://github.com/levkropp/gemscad.git
+cd gemscad
 npm install
 npm start
 ```
@@ -78,11 +78,11 @@ npm start
 
 ## Usage
 
-1. Launch ClawSCAD — it creates a workspace at `~/clawscad-workspace/`
+1. Launch gemscad — it creates a workspace at `~/gemscad-workspace/`
 2. Claude Code starts in the terminal panel on the right
 3. Tell Claude what to build: *"Make a gear with 20 teeth and a shaft hole"*
-4. Claude writes a .scad file, ClawSCAD auto-renders it in the 3D viewport
-5. If the render fails, ClawSCAD tells Claude to fix it automatically
+4. Claude writes a .scad file, gemscad auto-renders it in the 3D viewport
+5. If the render fails, gemscad tells Claude to fix it automatically
 6. Click any checkpoint in the History panel to go back and branch
 7. Use the color swatches to try different colors instantly
 8. Export to STL/3MF when you're happy with the design
@@ -107,7 +107,7 @@ npm start
 ## Architecture
 
 ```
-ClawSCAD
+gemscad
 ├── main.js          Electron main process — multi-window, project state, render queue, MCP client
 ├── renderer.js      3D viewport (three.js), terminal (xterm.js), editor (Monaco), checkpoint tree
 ├── preload.js       IPC bridge between main and renderer
@@ -126,4 +126,5 @@ ClawSCAD
 
 MIT — see [LICENSE](LICENSE).
 
-OpenSCAD (GPLv2+) and Claude Code (Apache 2.0) are launched as separate subprocesses. ClawSCAD does not incorporate or link against code from either project.
+OpenSCAD (GPLv2+) and Claude Code (Apache 2.0) are launched as separate subprocesses. gemscad does not incorporate or link against code from either project.
+

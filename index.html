@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ClawSCAD</title>
+  <title>gemscad</title>
   <link rel="stylesheet" href="./node_modules/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="./dist/renderer.css">
   <link rel="stylesheet" href="./style.css">
@@ -12,7 +12,7 @@
   <div id="app">
     <!-- Header -->
     <div id="app-header">
-      <button id="app-menu-btn" class="brand-btn">ClawSCAD <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l4 4 4-4"/></svg></button>
+      <button id="app-menu-btn" class="brand-btn">gemscad <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l4 4 4-4"/></svg></button>
       <div id="app-menu" class="hidden">
         <button class="menu-item" data-action="split-viewport">New Viewport <span class="menu-shortcut">Ctrl+N</span></button>
         <button class="menu-item" data-action="new-project">New Project Window...</button>
@@ -97,7 +97,7 @@
         </div>
         </div><!-- /viewports-container -->
         <div id="status-bar">
-          <span class="label">ClawSCAD</span>
+          <span class="label">gemscad</span>
           <span id="status">Waiting for model...</span>
           <span class="spacer"></span>
           <div id="color-swatches">
@@ -130,7 +130,7 @@
             </button>
             <span class="label">History</span>
             <span class="spacer"></span>
-            <button id="resume-session-btn" class="small-btn hidden" title="Resume the Claude session that created this checkpoint">Resume Session</button>
+            <button id="resume-session-btn" class="small-btn hidden" title="Resume the Gemini session that created this checkpoint">Resume Session</button>
           </div>
           <div id="checkpoint-tree"></div>
         </div>
@@ -159,7 +159,7 @@
       <div id="right-panel">
         <div class="terminal-pane" id="terminal-pane-0">
           <div class="terminal-pane-header">
-            <span class="label">Claude Code</span>
+            <span class="label">Gemini Code</span>
             <span class="spacer"></span>
             <button id="add-terminal-btn" class="small-btn" title="Add second terminal (+)">+</button>
             <button id="session-btn" class="small-btn" title="Session History">Sessions</button>
@@ -174,7 +174,7 @@
         </div>
         <div class="terminal-pane hidden" id="terminal-pane-1">
           <div class="terminal-pane-header">
-            <span class="label">Claude Code 2</span>
+            <span class="label">Gemini Code 2</span>
             <span class="spacer"></span>
             <button class="close-terminal-btn small-btn" data-pane="1" title="Close this terminal">x</button>
           </div>
@@ -190,3 +190,4 @@
   <script type="module" src="./dist/renderer.js"></script>
 </body>
 </html>
+

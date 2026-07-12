@@ -72,8 +72,8 @@ monaco.languages.setMonarchTokensProvider('scad', {
   },
 });
 
-// Register ClawSCAD dark theme
-monaco.editor.defineTheme('clawscad-dark', {
+// Register gemscad dark theme
+monaco.editor.defineTheme('gemscad-dark', {
   base: 'vs-dark',
   inherit: true,
   rules: [
@@ -105,7 +105,7 @@ const editorContainer = document.getElementById('editor-container');
 const monacoEditor = monaco.editor.create(editorContainer, {
   value: '// Select a checkpoint to view source code',
   language: 'scad',
-  theme: 'clawscad-dark',
+  theme: 'gemscad-dark',
   readOnly: true,
   minimap: { enabled: false },
   scrollBeyondLastLine: false,
@@ -588,9 +588,30 @@ function load3MF(buffer, checkpointId) {
     modelCache.delete(checkpointId);
   }
 
-  const group = threeMFLoader.parse(
-    buffer instanceof Uint8Array ? buffer.buffer : buffer
-  );
+  let group;
+  try {
+    group = threeMFLoader.parse(
+      buffer instanceof Uint8Array ? buffer.buffer : buffer
+    );
+  } catch (err) {
+    showToast(`Failed to parse 3MF: ${err.message}`, 'error');
+    return;
+  }
+
+  // "It parsed without throwing" is NOT proof the model is good. A 3MF with zero
+  // meshes parses perfectly happily and would then be added to the scene and cached
+  // as this checkpoint's model — the viewer shows nothing and reports no error.
+  // That is the "opens empty" bug. Assert real geometry before we trust it.
+  let vertexCount = 0;
+  group.traverse((child) => {
+    if (child.isMesh && child.geometry?.attributes?.position) {
+      vertexCount += child.geometry.attributes.position.count;
+    }
+  });
+  if (vertexCount === 0) {
+    showToast('3MF contains no geometry — the model is empty', 'error');
+    return;
+  }
 
   // Center the group
   const box = new THREE.Box3().setFromObject(group);
@@ -869,7 +890,7 @@ const TOOLBAR_BUTTONS = [
     action: () => {
       renderer3d.render(scene, activeCamera);
       const link = document.createElement('a');
-      link.download = `clawscad-${Date.now()}.png`;
+      link.download = `gemscad-${Date.now()}.png`;
       link.href = renderer3d.domElement.toDataURL('image/png');
       link.click();
       showToast('Screenshot saved', 'success');
@@ -1059,7 +1080,7 @@ function renderTree() {
 
   if (Object.keys(checkpoints).length === 0) {
     treeEl.innerHTML =
-      '<div class="cp-empty">No checkpoints yet.<br>Ask Claude to create a model!</div>';
+      '<div class="cp-empty">No checkpoints yet.<br>Ask Gemini to create a model!</div>';
     return;
   }
 
@@ -1540,7 +1561,7 @@ appMenu.addEventListener('click', async (e) => {
 // ── Color Swatches ──────────────────────────────────────────────────────
 
 const defaultSwatches = ['#4488ff', '#ff5555', '#50fa7b', '#f1fa8c', '#ff79c6', '#8be9fd'];
-let swatchColors = JSON.parse(localStorage.getItem('clawscad-swatches') || 'null') || [...defaultSwatches];
+let swatchColors = JSON.parse(localStorage.getItem('gemscad-swatches') || 'null') || [...defaultSwatches];
 const swatchEditor = document.getElementById('swatch-editor');
 let editingSwatch = null;
 
@@ -1588,7 +1609,7 @@ swatchEditor.addEventListener('input', (e) => {
   swatchColors[editingSwatch] = hex;
   const swatch = document.querySelector(`.swatch[data-idx="${editingSwatch}"]`);
   if (swatch) swatch.style.background = hex;
-  localStorage.setItem('clawscad-swatches', JSON.stringify(swatchColors));
+  localStorage.setItem('gemscad-swatches', JSON.stringify(swatchColors));
 });
 
 swatchEditor.addEventListener('change', () => {
@@ -1780,11 +1801,11 @@ let printSettings = {
   infillPercent: 15,
   material: 'PLA',
   costPerKg: 20,
-  ...JSON.parse(localStorage.getItem('clawscad-print-settings') || '{}'),
+  ...JSON.parse(localStorage.getItem('gemscad-print-settings') || '{}'),
 };
 
 function savePrintSettings() {
-  localStorage.setItem('clawscad-print-settings', JSON.stringify(printSettings));
+  localStorage.setItem('gemscad-print-settings', JSON.stringify(printSettings));
 }
 
 // Hydrate settings UI from saved values
@@ -2482,3 +2503,4 @@ function animate() {
 }
 
 animate();
+

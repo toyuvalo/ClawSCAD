@@ -2,9 +2,206 @@ const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron')
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const pty = require('node-pty');
+let pty;
+try {
+  pty = require('node-pty');
+} catch (e) {
+  console.error('Failed to load node-pty. Terminal panel will be disabled.', e.message);
+}
 const chokidar = require('chokidar');
+const zlib = require('zlib');
 const { execFile, spawn } = require('child_process');
+
+// ── Artifact assertion ────────────────────────────────────────────────────
+// An exit code of 0 is NOT proof the artifact is good. OpenSCAD happily exits 0
+// after writing a file with ZERO geometry (a model fully differenced away, an
+// empty union, a bad $fn) — and "the file exists" says nothing about what is in
+// it. That file then goes to the viewer, or to the user's slicer and printer.
+// So every mesh we produce gets RE-OPENED and checked for actual triangles
+// before we call it a success.
+
+const MIN_MODEL_BYTES = 200;
+
+const ZIP64_SENTINEL = 0xffffffff;
+
+/**
+ * List the entries of a ZIP (a 3MF is a ZIP) without pulling in a dependency.
+ * Handles ZIP64 — OpenSCAD's 3MF writer emits it, and a plain-ZIP reader finds
+ * NOTHING in those files while looking perfectly healthy. (Found the hard way:
+ * the first version of this passed `node --check` and silently rejected every
+ * real 3MF in the repo.)
+ */
+function zipEntries(buf) {
+  // End Of Central Directory — scan back over the variable-length comment.
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0 && i >= buf.length - 22 - 0xffff; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return null;
+
+  let count = buf.readUInt16LE(eocd + 10);
+  let cdOff = buf.readUInt32LE(eocd + 16);
+
+  // ZIP64: the 32-bit fields above are sentinels; the real values live in the
+  // ZIP64 EOCD record pointed at by the locator immediately before the EOCD.
+  if (cdOff === ZIP64_SENTINEL || count === 0xffff) {
+    const loc = eocd - 20;
+    if (loc < 0 || buf.readUInt32LE(loc) !== 0x07064b50) return null;
+    const z64 = Number(buf.readBigUInt64LE(loc + 8));
+    if (!Number.isSafeInteger(z64) || z64 < 0 || z64 + 56 > buf.length) return null;
+    if (buf.readUInt32LE(z64) !== 0x06064b50) return null;
+    count = Number(buf.readBigUInt64LE(z64 + 32));
+    cdOff = Number(buf.readBigUInt64LE(z64 + 48));
+  }
+
+  const entries = [];
+  let p = cdOff;
+  for (let i = 0; i < count; i++) {
+    if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) return null;
+    const method = buf.readUInt16LE(p + 10);
+    let compSize = buf.readUInt32LE(p + 20);
+    const uncompSize = buf.readUInt32LE(p + 24);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const extraLen = buf.readUInt16LE(p + 30);
+    const commentLen = buf.readUInt16LE(p + 32);
+    let localOff = buf.readUInt32LE(p + 42);
+    const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
+
+    // Pull the 64-bit size/offset out of the ZIP64 extra field when they're sentinels.
+    // The extra field carries only the fields that actually overflowed, in this order.
+    if (compSize === ZIP64_SENTINEL || localOff === ZIP64_SENTINEL) {
+      let e = p + 46 + nameLen;
+      const eEnd = e + extraLen;
+      while (e + 4 <= eEnd) {
+        const id = buf.readUInt16LE(e);
+        const sz = buf.readUInt16LE(e + 2);
+        if (id === 0x0001) {
+          let q = e + 4;
+          if (uncompSize === ZIP64_SENTINEL) q += 8;
+          if (compSize === ZIP64_SENTINEL) { compSize = Number(buf.readBigUInt64LE(q)); q += 8; }
+          if (localOff === ZIP64_SENTINEL) { localOff = Number(buf.readBigUInt64LE(q)); q += 8; }
+          break;
+        }
+        e += 4 + sz;
+      }
+    }
+
+    entries.push({ name, method, compSize, localOff });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+/** Decompress one listed ZIP entry. */
+function zipRead(buf, entry) {
+  const { method, compSize, localOff } = entry;
+  if (localOff + 30 > buf.length || buf.readUInt32LE(localOff) !== 0x04034b50) return null;
+  const nameLen = buf.readUInt16LE(localOff + 26);
+  const extraLen = buf.readUInt16LE(localOff + 28);
+  const start = localOff + 30 + nameLen + extraLen;
+  const data = buf.subarray(start, start + compSize);
+  if (method === 0) return data;
+  if (method === 8) return zlib.inflateRawSync(data);
+  return null; // unsupported compression
+}
+
+/**
+ * Count occurrences of a token in a Buffer using the native search.
+ * Deliberately NOT a regex over buf.toString(): OpenSCAD emits ASCII STL, and
+ * these files reach 40+ MB. Materialising that as a JS string and building a
+ * match array would stall the Electron main process on every render.
+ */
+function countToken(buf, token) {
+  const needle = Buffer.from(token, 'latin1');
+  let n = 0;
+  let i = buf.indexOf(needle, 0);
+  while (i !== -1) {
+    n++;
+    i = buf.indexOf(needle, i + needle.length);
+  }
+  return n;
+}
+
+/** Does this STL actually contain triangles? Handles both binary and ASCII. */
+function inspectStl(buf) {
+  if (buf.length >= 84) {
+    const tris = buf.readUInt32LE(80);
+    // Binary STL has an exact size: 80-byte header + uint32 count + 50 bytes/triangle.
+    if (buf.length === 84 + tris * 50) {
+      return tris > 0
+        ? { ok: true, detail: `${tris} triangles` }
+        : { ok: false, reason: 'binary STL declares 0 triangles' };
+    }
+  }
+  // ASCII STL (what OpenSCAD writes). Every facet is closed by exactly one
+  // "endfacet", so counting that token is both exact and whitespace-independent.
+  const head = buf.subarray(0, 64).toString('latin1');
+  if (!/^\s*solid/i.test(head)) return { ok: false, reason: 'not a recognisable STL' };
+  const facets = countToken(buf, 'endfacet');
+  return facets > 0
+    ? { ok: true, detail: `${facets} facets` }
+    : { ok: false, reason: 'ASCII STL contains 0 facets' };
+}
+
+/**
+ * Does this 3MF actually contain a mesh? (This is the "opens empty" bug.)
+ *
+ * Two shapes exist in the wild and both must pass:
+ *   - OpenSCAD writes the mesh inline in 3D/3dmodel.model.
+ *   - Slicers (Bambu/Prusa) leave 3D/3dmodel.model holding only <component> refs
+ *     and put the real meshes in 3D/Objects/object_*.model.
+ * So sum the geometry across every .model part rather than trusting the root one.
+ */
+function inspect3mf(buf) {
+  let entries;
+  try {
+    entries = zipEntries(buf);
+  } catch (e) {
+    return { ok: false, reason: `3MF zip is corrupt (${e.message})` };
+  }
+  if (!entries) return { ok: false, reason: '3MF is not a readable zip' };
+
+  const models = entries.filter((e) => /\.model$/i.test(e.name));
+  if (models.length === 0) return { ok: false, reason: '3MF contains no .model part' };
+
+  let verts = 0;
+  let tris = 0;
+  for (const m of models) {
+    let data;
+    try {
+      data = zipRead(buf, m);
+    } catch (e) {
+      return { ok: false, reason: `3MF part ${m.name} is corrupt (${e.message})` };
+    }
+    if (!data) continue;
+    // "<vertices>" does not contain "<vertex", so that count is already exact.
+    // "<triangles>" DOES contain "<triangle", so subtract the wrapper tags.
+    verts += countToken(data, '<vertex');
+    tris += countToken(data, '<triangle') - countToken(data, '<triangles');
+  }
+
+  if (verts <= 0 || tris <= 0) {
+    return { ok: false, reason: `3MF contains no mesh (${verts} vertices, ${tris} triangles)` };
+  }
+  return { ok: true, detail: `${verts} vertices, ${tris} triangles` };
+}
+
+/**
+ * Re-open a produced model file and assert it holds real geometry.
+ * Returns { ok: true, detail } or { ok: false, reason }.
+ */
+function inspectModelFile(filePath) {
+  let buf;
+  try {
+    buf = fs.readFileSync(filePath);
+  } catch {
+    return { ok: false, reason: 'file was not written' };
+  }
+  if (buf.length < MIN_MODEL_BYTES) {
+    return { ok: false, reason: `file is only ${buf.length} bytes — empty output` };
+  }
+  return /\.3mf$/i.test(filePath) ? inspect3mf(buf) : inspectStl(buf);
+}
 
 // Resolve the OpenSCAD binary: prefer bundled copy, fall back to env / system.
 // In packaged builds, extraResources lands at process.resourcesPath.
@@ -16,7 +213,7 @@ function resolveOpenSCAD() {
   const candidates = {
     linux:  path.join(base, 'openscad-linux.AppImage'),
     darwin: path.join(base, 'OpenSCAD.app', 'Contents', 'MacOS', 'OpenSCAD'),
-    win32:  path.join(base, 'openscad-win', 'openscad.exe'),
+    win32:  'C:\\Program Files\\OpenSCAD\\openscad.exe',
   };
   const bundled = candidates[process.platform];
   if (bundled && fs.existsSync(bundled)) return bundled;
@@ -33,13 +230,13 @@ function openscadEnv() {
   }
   return process.env;
 }
-const STATE_FILE = 'clawscad.json';
+const STATE_FILE = 'gemscad.json';
 const ACTIVE_FILE = 'active.scad';
 const MAX_WINDOWS = 4;
 
 // ── OpenSCAD MCP Client ─────────────────────────────────────────────────
 // Spawns openscad-mcp-server as a subprocess and calls its tools via JSON-RPC.
-// This gives ClawSCAD direct rendering/validation without relying on Claude's MCP.
+// This gives gemscad direct rendering/validation without relying on Gemini's MCP.
 
 class McpClient {
   constructor() {
@@ -85,7 +282,7 @@ class McpClient {
       await this._send('initialize', {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'ClawSCAD', version: '0.1.0' },
+        clientInfo: { name: 'gemscad', version: '0.1.1' },
       });
       this._notify('notifications/initialized');
       this.ready = true;
@@ -175,7 +372,7 @@ const mcpClient = new McpClient();
 
 // ── Multi-Window State ──────────────────────────────────────────────────
 // Each BrowserWindow gets its own context: workspace, checkpoints, pty, watcher.
-// Claude in each window sees all other open workspaces via CLAUDE.md.
+// Gemini in each window sees all other open workspaces via GEMINI.md.
 
 const windows = new Map(); // webContents.id -> ctx
 
@@ -188,12 +385,12 @@ function getCtx(event) {
 function openWindow(wsDir) {
   if (windows.size >= MAX_WINDOWS) return null;
 
-  wsDir = wsDir || path.join(os.homedir(), 'clawscad-workspace');
+  wsDir = wsDir || path.join(os.homedir(), 'gemscad-workspace');
 
   const win = new BrowserWindow({
     width: 1600,
     height: 900,
-    title: 'ClawSCAD',
+    title: 'gemscad',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -226,7 +423,7 @@ function openWindow(wsDir) {
   startTerminal(ctx);
   startFileWatcher(ctx);
 
-  win.setTitle(`ClawSCAD — ${ctx.workspaceDir}`);
+  win.setTitle(`gemscad — ${ctx.workspaceDir}`);
 
   win.webContents.once('did-finish-load', () => {
     sendCheckpoints(ctx);
@@ -252,10 +449,10 @@ function openWindow(wsDir) {
     if (ctx.ptyProcess2) try { ctx.ptyProcess2.kill(); } catch {}
     ctx.window = null; // Mark as destroyed so ctxSend won't touch it
     windows.delete(wcId);
-    updateAllClaudeMd();
+    updateAllGeminiMd();
   });
 
-  updateAllClaudeMd();
+  updateAllGeminiMd();
   addRecentPath(wsDir);
   return ctx;
 }
@@ -301,29 +498,29 @@ You have access to the \`openscad\` MCP server with these tools — **use them p
 **Always render and visually verify your output.** Don't just write code and hope — use the MCP tools to see the result and iterate if needed.
 
 ## Auto-Iteration
-ClawSCAD automatically validates your .scad files when they are created. If a render fails:
+gemscad automatically validates your .scad files when they are created. If a render fails:
 - Errors are written to \`RENDER_ERRORS.md\` in this workspace
 - You will receive a message asking you to fix the issue
 - **Read RENDER_ERRORS.md**, understand the problem, and create a NEW fixed .scad file
 - Keep iterating until the render succeeds — don't present broken models to the user
 - Only stop when you have a clean render with no errors`;
 
-function updateAllClaudeMd() {
+function updateAllGeminiMd() {
   // Filter out destroyed windows
   const live = Array.from(windows.values()).filter((c) => c.window !== null);
   const allWorkspaces = live.map((c) => c.workspaceDir);
   for (const ctx of live) {
-    try { writeClaudeMd(ctx, allWorkspaces); } catch {}
+    try { writeGeminiMd(ctx, allWorkspaces); } catch {}
   }
 }
 
-function writeClaudeMd(ctx, allWorkspaces) {
+function writeGeminiMd(ctx, allWorkspaces) {
   const others = allWorkspaces.filter((w) => w !== ctx.workspaceDir);
-  let md = `# ClawSCAD Workspace — MANDATORY RULES\n\n${CLAUDE_MD_RULES}\n`;
+  let md = `# gemscad Workspace — MANDATORY RULES\n\n${CLAUDE_MD_RULES}\n`;
 
   if (others.length > 0) {
     md += `\n## Multi-Project Context\n`;
-    md += `ClawSCAD currently has ${allWorkspaces.length} projects open. You can reference designs across projects:\n`;
+    md += `gemscad currently has ${allWorkspaces.length} projects open. You can reference designs across projects:\n`;
     for (const w of allWorkspaces) {
       const label = path.basename(w);
       if (w === ctx.workspaceDir) {
@@ -336,14 +533,14 @@ function writeClaudeMd(ctx, allWorkspaces) {
     md += `You can read any file from these paths. If the user asks you to combine or reference designs from other projects, read the relevant .scad files directly.\n`;
   }
 
-  fs.writeFileSync(path.join(ctx.workspaceDir, 'CLAUDE.md'), md);
+  fs.writeFileSync(path.join(ctx.workspaceDir, 'GEMINI.md'), md);
 }
 
 function initWorkspace(ctx) {
   fs.mkdirSync(ctx.workspaceDir, { recursive: true });
 
   // MCP server config — merge into existing settings
-  const claudeDir = path.join(ctx.workspaceDir, '.claude');
+  const claudeDir = path.join(ctx.workspaceDir, '.gemini');
   const settingsFile = path.join(claudeDir, 'settings.json');
   fs.mkdirSync(claudeDir, { recursive: true });
   let settings = {};
@@ -356,7 +553,7 @@ function initWorkspace(ctx) {
   settings.mcpServers.openscad = {
     command: 'npx',
     args: ['-y', 'openscad-mcp-server'],
-    // Point the MCP server at the same bundled binary ClawSCAD uses
+    // Point the MCP server at the same bundled binary gemscad uses
     env: { OPENSCAD_PATH: OPENSCAD_BIN },
   };
   fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
@@ -408,7 +605,7 @@ function getEncodedCwd(dir) {
 
 function detectCurrentSessionId(ctx) {
   const encoded = getEncodedCwd(ctx.workspaceDir);
-  const projectDir = path.join(os.homedir(), '.claude', 'projects', encoded);
+  const projectDir = path.join(os.homedir(), '.gemini', 'projects', encoded);
   try {
     if (!fs.existsSync(projectDir)) return null;
     const files = fs
@@ -506,7 +703,15 @@ function processRenderQueue(ctx) {
   execFile(OPENSCAD_BIN, ['-o', outputPath, scadPath], { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
     ctx.isRendering = false;
 
-    if (err || !fs.existsSync(outputPath)) {
+    const wroteNothing = err || !fs.existsSync(outputPath);
+    // Existence is not geometry. OpenSCAD can exit 0 and write a mesh-less file;
+    // that is exactly what "the model opens empty" looks like from here.
+    const artifact = wroteNothing ? null : inspectModelFile(outputPath);
+
+    if (wroteNothing) {
+      // The 3MF writer may be unavailable in this OpenSCAD build — retry as STL.
+      // (Only for a genuinely un-written file: a mesh-less 3MF would be a
+      // mesh-less STL too, so falling back there would just waste a render.)
       if (ctx.renderFormat === '3mf') {
         ctx.renderFormat = 'stl';
         ctx.renderQueue.unshift(scadPath);
@@ -520,14 +725,27 @@ function processRenderQueue(ctx) {
         error: errorText,
         errors,
       });
-      // Auto-iteration: write errors so Claude can see them and nudge the terminal
+      // Auto-iteration: write errors so Gemini can see them and nudge the terminal
+      writeRenderErrors(ctx, path.basename(scadPath), errorText, errors);
+    } else if (!artifact.ok) {
+      const errorText =
+        `OpenSCAD exited 0 but produced NO GEOMETRY in ${path.basename(outputPath)} — ${artifact.reason}.\n` +
+        `The model is empty: check for a difference() that removes everything, an empty union(), ` +
+        `or a module that is never instantiated.` +
+        (stderr ? `\n\nOpenSCAD said:\n${stderr}` : '');
+      const errors = parseOpenSCADErrors(stderr || '');
+      ctxSend(ctx, 'render:error', {
+        file: path.basename(scadPath),
+        error: errorText,
+        errors,
+      });
       writeRenderErrors(ctx, path.basename(scadPath), errorText, errors);
     } else {
       if (stderr && stderr.includes('WARNING')) {
         ctxSend(ctx, 'render:warning', { file: path.basename(scadPath), warnings: stderr });
       }
       sendModel(ctx, outputPath, ctx.renderFormat);
-      ctxSend(ctx, 'render:complete', { file: path.basename(scadPath) });
+      ctxSend(ctx, 'render:complete', { file: path.basename(scadPath), detail: artifact.detail });
       clearRenderErrors(ctx);
     }
 
@@ -547,7 +765,7 @@ function parseOpenSCADErrors(stderr) {
 }
 
 function writeRenderErrors(ctx, filename, errorText, errors) {
-  // Write a RENDER_ERRORS.md that Claude can read to understand what went wrong
+  // Write a RENDER_ERRORS.md that Gemini can read to understand what went wrong
   const errFile = path.join(ctx.workspaceDir, 'RENDER_ERRORS.md');
   const errorLines = errors.map((e) => `- Line ${e.line}: ${e.message}`).join('\n');
   fs.writeFileSync(
@@ -559,13 +777,13 @@ function writeRenderErrors(ctx, filename, errorText, errors) {
       `## Raw Output\n\`\`\`\n${errorText.substring(0, 2000)}\n\`\`\`\n`
   );
 
-  // Send a nudge to Claude's terminal — a visible prompt that there are errors to fix
+  // Send a nudge to Gemini's terminal — a visible prompt that there are errors to fix
   if (ctx.ptyProcess) {
-    // Only nudge if Claude seems idle (don't interrupt mid-generation)
+    // Only nudge if Gemini seems idle (don't interrupt mid-generation)
     // Write to pty so it appears in the conversation as user input
     const nudge =
       `The render of ${filename} failed. Read RENDER_ERRORS.md for details and create a fixed version.\n`;
-    // Small delay to avoid interrupting Claude mid-output
+    // Small delay to avoid interrupting Gemini mid-output
     setTimeout(() => {
       if (ctx.ptyProcess) ctx.ptyProcess.write(nudge);
     }, 2000);
@@ -615,7 +833,7 @@ function sendFileContent(ctx, scadFilename) {
 
 function discoverSessions(ctx) {
   const encoded = getEncodedCwd(ctx.workspaceDir);
-  const projectDir = path.join(os.homedir(), '.claude', 'projects', encoded);
+  const projectDir = path.join(os.homedir(), '.gemini', 'projects', encoded);
   const sessions = [];
   try {
     if (!fs.existsSync(projectDir)) return sessions;
@@ -652,8 +870,8 @@ function discoverSessions(ctx) {
 function spawnPty(ctx, cmd, args = []) {
   const proc = pty.spawn(cmd, args, {
     name: 'xterm-256color',
-    cols: 80,
-    rows: 24,
+    cols: 120, // Start larger to avoid early wrapping glitches
+    rows: 40,
     cwd: ctx.workspaceDir,
     env: { ...process.env, COLORTERM: 'truecolor' },
   });
@@ -664,8 +882,8 @@ function spawnPty(ctx, cmd, args = []) {
 function spawnPty2(ctx, cmd, args = []) {
   const proc = pty.spawn(cmd, args, {
     name: 'xterm-256color',
-    cols: 80,
-    rows: 24,
+    cols: 120,
+    rows: 40,
     cwd: ctx.workspaceDir,
     env: { ...process.env, COLORTERM: 'truecolor' },
   });
@@ -675,35 +893,32 @@ function spawnPty2(ctx, cmd, args = []) {
 
 function startTerminal(ctx) {
   const shell = process.env.SHELL || '/bin/bash';
-  try {
-    ctx.ptyProcess = spawnPty(ctx, 'claude', []);
-  } catch {
-    ctx.ptyProcess = spawnPty(ctx, shell, []);
+  if (pty) {
+    try {
+      ctx.ptyProcess = spawnPty(ctx, process.platform === 'win32' ? 'gemini.cmd' : 'gemini', ['--approval-mode', 'yolo', '--raw-output']);
+    } catch {
+      ctx.ptyProcess = spawnPty(ctx, shell, []);
+    }
+  } else {
+    console.warn('Terminal disabled: pty is null');
   }
-  ctx.ptyProcess.onExit(() => {
-    ctx.ptyProcess = spawnPty(ctx, shell, []);
-    ctx.ptyProcess.onExit(() => {});
-  });
 }
 
 function restartTerminal(ctx, args = []) {
   if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
+  const yoloArgs = ['--approval-mode', 'yolo', '--raw-output', ...args];
   try {
-    ctx.ptyProcess = spawnPty(ctx, 'claude', args);
+    ctx.ptyProcess = spawnPty(ctx, process.platform === 'win32' ? 'gemini.cmd' : 'gemini', yoloArgs);
   } catch {
     ctx.ptyProcess = spawnPty(ctx, process.env.SHELL || '/bin/bash', []);
   }
-  ctx.ptyProcess.onExit(() => {
-    ctx.ptyProcess = spawnPty(ctx, process.env.SHELL || '/bin/bash', []);
-    ctx.ptyProcess.onExit(() => {});
-  });
 }
 
 // ── File Watcher ────────────────────────────────────────────────────────
 
 function startFileWatcher(ctx) {
   ctx.fileWatcher = chokidar.watch(ctx.workspaceDir, {
-    ignored: /(^|[/\\])(\.|node_modules|clawscad\.json)/,
+    ignored: /(^|[/\\])(\.|node_modules|gemscad\.json)/,
     ignoreInitial: true,
     depth: 1,
     awaitWriteFinish: { stabilityThreshold: 200 },
@@ -747,7 +962,7 @@ ipcMain.handle('terminal2:spawn', (event) => {
   const ctx = getCtx(event);
   if (!ctx || ctx.ptyProcess2) return;
   try {
-    ctx.ptyProcess2 = spawnPty2(ctx, 'claude', []);
+    ctx.ptyProcess2 = spawnPty2(ctx, process.platform === 'win32' ? 'gemini.cmd' : 'gemini', []);
   } catch {
     ctx.ptyProcess2 = spawnPty2(ctx, process.env.SHELL || '/bin/bash', []);
   }
@@ -774,7 +989,7 @@ ipcMain.on('terminal2:resize', (event, { cols, rows }) => {
 
 ipcMain.on('terminal:resize', (event, { cols, rows }) => {
   const ctx = getCtx(event);
-  if (ctx && ctx.ptyProcess) try { ctx.ptyProcess.resize(cols, rows); } catch {}
+  if (pty && ctx.ptyProcess) try { ctx.ptyProcess.resize(cols, rows); } catch {}
 });
 
 ipcMain.handle('workspace:get', (event) => {
@@ -906,7 +1121,7 @@ ipcMain.handle('app:new-project-window', async (event) => {
   if (windows.size >= MAX_WINDOWS) return null;
   const ctx = getCtx(event);
   // Default to current workspace name + "-2"
-  const currentBase = ctx ? path.basename(ctx.workspaceDir) : 'clawscad-workspace';
+  const currentBase = ctx ? path.basename(ctx.workspaceDir) : 'gemscad-workspace';
   const defaultDir = path.join(
     ctx ? path.dirname(ctx.workspaceDir) : os.homedir(),
     currentBase + '-2'
@@ -939,9 +1154,9 @@ ipcMain.handle('app:open-workspace', async (event) => {
     loadState(ctx);
     startTerminal(ctx);
     startFileWatcher(ctx);
-    ctx.window.setTitle(`ClawSCAD — ${ctx.workspaceDir}`);
+    ctx.window.setTitle(`gemscad — ${ctx.workspaceDir}`);
     sendCheckpoints(ctx);
-    updateAllClaudeMd();
+    updateAllGeminiMd();
     return ctx.workspaceDir;
   }
   return null;
@@ -954,7 +1169,7 @@ ipcMain.handle('app:open-workspace-in-files', (event) => {
 
 ipcMain.handle('app:get-print-settings-path', (event) => {
   const ctx = getCtx(event);
-  return ctx ? path.join(ctx.workspaceDir, 'clawscad.json') : '';
+  return ctx ? path.join(ctx.workspaceDir, 'gemscad.json') : '';
 });
 
 ipcMain.handle('app:export', async (event, format) => {
@@ -988,9 +1203,39 @@ ipcMain.handle('app:export', async (event, format) => {
     execFile(OPENSCAD_BIN, args, { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
       if (err) {
         resolve({ error: stderr || err.message });
-      } else {
-        resolve({ path: result.filePath });
+        return;
       }
+
+      // This file goes to the user's slicer and printer. An exit code of 0 is not
+      // proof it is printable — re-open it and assert it holds real geometry.
+      let size;
+      try {
+        size = fs.statSync(result.filePath).size;
+      } catch {
+        resolve({ error: `OpenSCAD reported success but wrote no file to ${result.filePath}` });
+        return;
+      }
+
+      if (format === 'png') {
+        if (size < 1024) {
+          resolve({ error: `Export produced an empty PNG (${size} bytes) — nothing was rendered.` });
+          return;
+        }
+        resolve({ path: result.filePath });
+        return;
+      }
+
+      const artifact = inspectModelFile(result.filePath);
+      if (!artifact.ok) {
+        resolve({
+          error:
+            `OpenSCAD exited 0 but the exported ${format.toUpperCase()} has NO GEOMETRY — ` +
+            `${artifact.reason}. This file would open empty in your slicer; the export was NOT written as valid.`,
+        });
+        return;
+      }
+
+      resolve({ path: result.filePath, detail: artifact.detail });
     });
   });
 });
@@ -1055,9 +1300,9 @@ ipcMain.handle('app:open-path', async (event, inputPath) => {
       loadState(ctx);
       startTerminal(ctx);
       startFileWatcher(ctx);
-      ctx.window.setTitle(`ClawSCAD — ${ctx.workspaceDir}`);
+      ctx.window.setTitle(`gemscad — ${ctx.workspaceDir}`);
       sendCheckpoints(ctx);
-      updateAllClaudeMd();
+      updateAllGeminiMd();
       addRecentPath(inputPath);
       return { type: 'workspace', path: inputPath };
     } else if (stat.isFile() && inputPath.endsWith('.scad')) {
@@ -1085,7 +1330,7 @@ app.whenReady().then(async () => {
   mcpClient.start().catch(() => {});
 
   const cliArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
-  const wsDir = cliArg ? path.resolve(cliArg) : path.join(os.homedir(), 'clawscad-workspace');
+  const wsDir = cliArg ? path.resolve(cliArg) : path.join(os.homedir(), 'gemscad-workspace');
   openWindow(wsDir);
 });
 
@@ -1093,3 +1338,4 @@ app.on('window-all-closed', () => {
   mcpClient.stop();
   app.quit();
 });
+

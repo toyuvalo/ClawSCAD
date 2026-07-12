@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 ClawSCAD Contributors
+Copyright (c) 2026 gemscad Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,3 +25,4 @@ SOFTWARE.
 This project launches OpenSCAD (GPLv2+) and Claude Code (Apache 2.0) as
 separate subprocesses. It does not incorporate or link against code from
 either project. Each tool retains its own license.
+

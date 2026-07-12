@@ -1,7 +1,7 @@
 {
-  "name": "clawscad",
-  "version": "0.1.0",
-  "description": "AI-powered 3D CAD — OpenSCAD + Claude Code with checkpoint branching",
+  "name": "gemscad",
+  "version": "0.1.2",
+  "description": "AI-powered 3D CAD — OpenSCAD + Gemini Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
     "postinstall": "electron-rebuild -f -w node-pty",
@@ -22,7 +22,7 @@
     "@xterm/xterm": "^5.5.0",
     "chokidar": "^3.6.0",
     "monaco-editor": "^0.55.1",
-    "node-pty": "^1.0.0",
+    "node-pty": "^1.1.0",
     "three": "^0.170.0"
   },
   "devDependencies": {
@@ -34,11 +34,11 @@
     "esbuild": "^0.24.0"
   },
   "build": {
-    "appId": "com.clawscad.app",
+    "appId": "com.gemscad.app",
     "directories": {
       "output": "release"
     },
-    "productName": "ClawSCAD",
+    "productName": "gemscad",
     "artifactName": "${productName}-${version}.${ext}",
     "files": [
       "main.js",
@@ -51,25 +51,44 @@
       "!node_modules/.cache"
     ],
     "extraResources": [
-      { "from": "icon.png", "to": "icon.png" }
+      {
+        "from": "icon.png",
+        "to": "icon.png"
+      }
     ],
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "icon.png",
       "category": "Graphics",
       "extraResources": [
-        { "from": "vendors/openscad-linux.AppImage", "to": "openscad-linux.AppImage" }
+        {
+          "from": "vendors/openscad-linux.AppImage",
+          "to": "openscad-linux.AppImage"
+        }
       ]
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "icon.png",
       "extraResources": [
-        { "from": "vendors/openscad-win", "to": "openscad-win" }
+        {
+          "from": "vendors/openscad-win",
+          "to": "openscad-win"
+        }
       ]
     },
     "nsis": {
@@ -78,18 +97,34 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
       ],
       "icon": "icon.png",
       "category": "public.app-category.graphics-design",
       "extraResources": [
-        { "from": "vendors/OpenSCAD.app", "to": "OpenSCAD.app" }
+        {
+          "from": "vendors/OpenSCAD.app",
+          "to": "OpenSCAD.app"
+        }
       ]
     },
     "dmg": {
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     }
   },

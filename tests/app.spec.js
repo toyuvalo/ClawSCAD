@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 
 const APP_PATH = path.join(__dirname, '..');
-const TEST_WORKSPACE = path.join(os.tmpdir(), 'clawscad-test-' + Date.now());
+const TEST_WORKSPACE = path.join(os.tmpdir(), 'gemscad-test-' + Date.now());
 
 let electronApp;
 let page;
@@ -40,7 +40,7 @@ test.afterAll(async () => {
 test.describe('Window & Layout', () => {
   test('window launches with correct title', async () => {
     const title = await page.title();
-    expect(title).toBe('ClawSCAD');
+    expect(title).toBe('gemscad');
   });
 
   test('app header is visible with brand text', async () => {
@@ -48,7 +48,7 @@ test.describe('Window & Layout', () => {
     await expect(header).toBeVisible();
     const brand = page.locator('#app-menu-btn');
     await expect(brand).toBeVisible();
-    await expect(brand).toContainText('ClawSCAD');
+    await expect(brand).toContainText('gemscad');
   });
 
   test('viewport is visible', async () => {
@@ -64,7 +64,7 @@ test.describe('Window & Layout', () => {
   test('status bar is visible', async () => {
     const status = page.locator('#status-bar');
     await expect(status).toBeVisible();
-    await expect(status).toContainText('ClawSCAD');
+    await expect(status).toContainText('gemscad');
   });
 
   test('checkpoint panel is visible with empty state', async () => {
@@ -87,9 +87,9 @@ test.describe('Window & Layout', () => {
   });
 });
 
-// ── ClawSCAD Menu Tests ─────────────────────────────────────────────
+// ── gemscad Menu Tests ─────────────────────────────────────────────
 
-test.describe('ClawSCAD Menu', () => {
+test.describe('gemscad Menu', () => {
   test('menu is hidden by default', async () => {
     const menu = page.locator('#app-menu');
     await expect(menu).toHaveClass(/hidden/);
@@ -310,8 +310,8 @@ test.describe('Workspace Setup', () => {
     expect(isBundled || isSystemFallback).toBe(true);
   });
 
-  test('clawscad.json state file format', async () => {
-    const statePath = path.join(TEST_WORKSPACE, 'clawscad.json');
+  test('gemscad.json state file format', async () => {
+    const statePath = path.join(TEST_WORKSPACE, 'gemscad.json');
     const testScad = path.join(TEST_WORKSPACE, 'test-cube.scad');
     fs.writeFileSync(testScad, '// Test cube\ncube([10, 10, 10]);');
     await page.waitForTimeout(1500);
@@ -520,3 +520,4 @@ test.describe('Multi-Window', () => {
     expect(count).toBe(1);
   });
 });
+

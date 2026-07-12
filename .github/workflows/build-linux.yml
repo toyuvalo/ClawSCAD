@@ -56,7 +56,7 @@ jobs:
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
-          name: ClawSCAD-Linux-AppImage
+          name: gemscad-Linux-AppImage
           path: release/*.AppImage
           if-no-files-found: warn
 
@@ -65,3 +65,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release/*.AppImage
+
