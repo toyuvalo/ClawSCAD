@@ -260,6 +260,13 @@ class McpClient {
       return;
     }
 
+    // Same fatality hazard as the file watcher: ChildProcess is a real
+    // EventEmitter, so an unhandled 'error' (e.g. npx missing/ENOENT) would
+    // crash the whole Electron main process instead of just this subprocess.
+    this.proc.on('error', (err) => {
+      console.error('openscad-mcp-server process error:', err.message);
+    });
+
     this.proc.stdout.on('data', (chunk) => {
       this.buffer += chunk.toString();
       this._processBuffer();
@@ -925,6 +932,13 @@ function startFileWatcher(ctx) {
   });
   ctx.fileWatcher.on('add', (fp) => handleFileEvent(ctx, fp));
   ctx.fileWatcher.on('change', (fp) => handleFileEvent(ctx, fp));
+  // An unhandled 'error' event is FATAL in Node — it would kill the whole
+  // Electron main process (every window, the MCP server child, both terminal
+  // ptys), not just this watcher. A deleted/unmounted/permission-denied
+  // workspace dir should only stop live checkpoint detection, not the app.
+  ctx.fileWatcher.on('error', (err) => {
+    console.warn(`File watcher error for ${ctx.workspaceDir}:`, err.message);
+  });
 }
 
 function handleFileEvent(ctx, filePath) {

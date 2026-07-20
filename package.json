@@ -1,6 +1,6 @@
 {
   "name": "gemscad",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "AI-powered 3D CAD — OpenSCAD + Gemini Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
