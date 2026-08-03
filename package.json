@@ -1,6 +1,6 @@
 {
   "name": "clawscad",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-powered 3D CAD — OpenSCAD + Claude Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
@@ -25,12 +25,42 @@
     "three": "^0.170.0"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.6.0",
+    "@electron/rebuild": "^4.2.0",
     "@playwright/test": "^1.58.2",
-    "electron": "^33.0.0",
-    "electron-builder": "^26.8.1",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "electron-playwright-helpers": "^2.1.0",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.28.1"
+  },
+  "overrides": {
+    "dompurify": "^3.4.12",
+    "tar": "^7.5.18",
+    "js-yaml": "^4.3.0",
+    "form-data": "^4.0.6",
+    "tmp": "^0.2.6",
+    "@tootallnate/once": "^2.0.1",
+    "ip-address": "^10.1.1",
+    "@xmldom/xmldom": "^0.8.13",
+    "lodash": "^4.18.0",
+    "builder-util-runtime": "^9.7.0",
+    "minimatch@3.x": {
+      "brace-expansion": "^1.1.16"
+    },
+    "minimatch@9.x": {
+      "brace-expansion": "^2.1.2"
+    },
+    "minimatch@10.x": {
+      "brace-expansion": "^5.0.7"
+    },
+    "anymatch": {
+      "picomatch": "^2.3.2"
+    },
+    "readdirp": {
+      "picomatch": "^2.3.2"
+    },
+    "tinyglobby": {
+      "picomatch": "^4.0.4"
+    }
   },
   "build": {
     "appId": "com.clawscad.app",
