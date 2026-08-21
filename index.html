@@ -98,6 +98,7 @@
         </div><!-- /viewports-container -->
         <div id="status-bar">
           <span class="label">ClawSCAD</span>
+          <span id="app-version" class="app-version"></span>
           <span id="status">Waiting for model...</span>
           <span class="spacer"></span>
           <div id="color-swatches">
@@ -122,6 +123,44 @@
             <button id="editor-save-btn" class="small-btn hidden" title="Save (Ctrl+S)">Save</button>
           </div>
           <div id="editor-container"></div>
+        </div>
+        <div id="gen-panel" class="collapsed">
+          <div id="gen-header">
+            <button id="gen-toggle" class="panel-toggle" title="Toggle Generate">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg>
+            </button>
+            <span class="label">Generate</span>
+            <span class="spacer"></span>
+            <button id="gen-cancel-btn" class="small-btn hidden" title="Cancel the running job">Cancel</button>
+          </div>
+          <div id="gen-body">
+            <div id="gen-empty" class="gen-empty hidden">
+              No generation pipeline configured. <a href="#" id="gen-readme-link">See the project README</a>.
+            </div>
+            <div id="gen-configured" class="hidden">
+              <div id="gen-controls">
+                <textarea id="gen-prompt" rows="2" placeholder="Describe what to generate…"></textarea>
+                <div class="gen-row">
+                  <label class="gen-field">Count
+                    <select id="gen-count">
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="4" selected>4</option>
+                      <option value="6">6</option>
+                      <option value="8">8</option>
+                    </select>
+                  </label>
+                  <div id="gen-backends" class="gen-backends"></div>
+                </div>
+                <div class="gen-row">
+                  <button id="gen-generate-btn" class="small-btn">Generate images</button>
+                  <button id="gen-make3d-btn" class="small-btn" disabled>Make 3D</button>
+                </div>
+              </div>
+              <div id="gen-image-grid" class="gen-image-grid"></div>
+              <div id="gen-log" class="gen-log"></div>
+            </div>
+          </div>
         </div>
         <div id="checkpoint-panel">
           <div id="checkpoint-header">

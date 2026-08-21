@@ -1647,3 +1647,243 @@ body.dragging #splitter {
   border-color: #2a2a5a;
   background: #1a1a38;
 }
+
+/* ── App Version (status bar) ─────────────────────────────────────── */
+
+.app-version {
+  color: #333360;
+  font-family: "JetBrains Mono", Menlo, Monaco, monospace;
+  font-size: 10px;
+}
+
+/* ── Generate Panel ────────────────────────────────────────────────── */
+
+#gen-panel {
+  flex-shrink: 0;
+  max-height: 45%;
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #1a1a3a;
+  background: #0a0a18;
+}
+
+#gen-header {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 11px;
+  color: #505070;
+  background: linear-gradient(180deg, #0c0c1e, #0a0a18);
+  border-bottom: 1px solid #111130;
+  flex-shrink: 0;
+}
+
+#gen-header .label {
+  color: #4466aa;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+#gen-header .spacer {
+  flex: 1;
+}
+
+#gen-panel.collapsed #gen-body {
+  display: none;
+}
+
+#gen-panel.collapsed {
+  min-height: auto;
+  max-height: none;
+}
+
+#gen-panel.collapsed .panel-toggle {
+  transform: rotate(-90deg);
+}
+
+#gen-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gen-empty {
+  padding: 16px;
+  text-align: center;
+  color: #555580;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.gen-empty a {
+  color: #4488ff;
+}
+
+.gen-empty.hidden,
+#gen-configured.hidden {
+  display: none;
+}
+
+#gen-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#gen-prompt {
+  width: 100%;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid #222244;
+  border-radius: 4px;
+  background: #0d0d1a;
+  color: #c0c0d0;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+#gen-prompt:focus {
+  border-color: #4466aa;
+}
+
+.gen-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gen-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #666688;
+  font-size: 10px;
+}
+
+.gen-field select {
+  padding: 2px 6px;
+  border: 1px solid #222244;
+  border-radius: 3px;
+  background: #0d0d1a;
+  color: #b0b0d0;
+  font-size: 10px;
+  font-family: "JetBrains Mono", Menlo, Monaco, monospace;
+  outline: none;
+}
+
+.gen-backends {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.gen-backend-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #7777aa;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.gen-backend-check input {
+  accent-color: #4488ff;
+}
+
+.gen-backend-check.unavailable {
+  color: #444466;
+  text-decoration: line-through;
+}
+
+#gen-make3d-btn:disabled,
+.small-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gen-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+}
+
+.gen-image-grid:empty {
+  display: none;
+}
+
+.gen-candidate {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 2px solid #222244;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #0d0d1a;
+  transition: border-color 0.15s;
+}
+
+.gen-candidate:hover {
+  border-color: #333366;
+}
+
+.gen-candidate.selected {
+  border-color: #4488ff;
+  box-shadow: 0 0 8px #4488ff55;
+}
+
+.gen-candidate img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gen-candidate .gen-candidate-score {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 9px;
+  color: #c0c0e0;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: "JetBrains Mono", Menlo, Monaco, monospace;
+}
+
+.gen-log {
+  min-height: 40px;
+  max-height: 110px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  border: 1px solid #16162e;
+  border-radius: 4px;
+  background: #08081200;
+  font-family: "JetBrains Mono", Menlo, Monaco, monospace;
+  font-size: 10px;
+  color: #555580;
+  line-height: 1.5;
+}
+
+.gen-log:empty {
+  display: none;
+}
+
+.gen-log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.gen-log-line.gen-log-error {
+  color: #cc6666;
+}
+}

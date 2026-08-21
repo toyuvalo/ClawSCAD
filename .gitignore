@@ -6,3 +6,5 @@ release/
 .DS_Store
 test-results/
 playwright-report/
+tests/fixtures/*.exe
+tests/fixtures/*.pdb
