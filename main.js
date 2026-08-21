@@ -6,7 +6,65 @@ const pty = require('node-pty');
 const chokidar = require('chokidar');
 const { execFile, spawn } = require('child_process');
 
-const OPENSCAD_BIN = process.env.OPENSCAD_BINARY || 'openscad';
+// Resolve the OpenSCAD binary: prefer bundled copy, fall back to env / system.
+// In packaged builds, extraResources lands at process.resourcesPath.
+// In dev, look in the repo's vendors/ directory (populated by download-openscad.js).
+function resolveOpenSCAD() {
+  const base = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, 'vendors');
+  const candidates = {
+    linux:  path.join(base, 'openscad-linux.AppImage'),
+    darwin: path.join(base, 'OpenSCAD.app', 'Contents', 'MacOS', 'OpenSCAD'),
+    win32:  path.join(base, 'openscad-win', 'openscad.exe'),
+  };
+  const bundled = candidates[process.platform];
+  if (bundled && fs.existsSync(bundled)) return bundled;
+  return process.env.OPENSCAD_BINARY || 'openscad';
+}
+const OPENSCAD_BIN = resolveOpenSCAD();
+
+// Resolve the Claude Code CLI binary. Checks the standalone installer location
+// (~/.claude/local/claude), user/system PATH, and other common install paths.
+// Returns null if not found — startTerminal will auto-install via npm in that case.
+let _claudeBin = null;
+function resolveClaude() {
+  if (_claudeBin) return _claudeBin;
+  const candidates = [
+    path.join(os.homedir(), '.claude', 'local', 'claude'), // standalone installer
+    path.join(os.homedir(), '.local', 'bin', 'claude'),
+    '/usr/local/bin/claude',
+  ];
+  // Search every directory on this process's PATH (catches npm global and others)
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    candidates.push(path.join(dir, 'claude'));
+  }
+  // On Windows the executable is claude.exe (standalone / ~/.local/bin) or
+  // claude.cmd (npm global), so probe platform extensions before the bare name.
+  const exts = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
+  for (const c of candidates) {
+    for (const ext of exts) {
+      try { if (fs.existsSync(c + ext)) { _claudeBin = c + ext; return c + ext; } } catch {}
+    }
+  }
+  return null;
+}
+
+// Interactive shell to fall back to when Claude can't be launched. On Windows
+// process.env.SHELL is unset, so a bare '/bin/bash' fallback would fail to spawn.
+const DEFAULT_SHELL = process.platform === 'win32'
+  ? (process.env.COMSPEC || 'cmd.exe')
+  : (process.env.SHELL || '/bin/bash');
+
+// Extra env vars needed when running OpenSCAD on specific platforms.
+// On Linux, APPIMAGE_EXTRACT_AND_RUN=1 lets a bundled AppImage run inside
+// the Electron AppImage without needing nested FUSE mounts.
+function openscadEnv() {
+  if (process.platform === 'linux' && OPENSCAD_BIN.endsWith('.AppImage')) {
+    return { ...process.env, APPIMAGE_EXTRACT_AND_RUN: '1' };
+  }
+  return process.env;
+}
 const STATE_FILE = 'clawscad.json';
 const ACTIVE_FILE = 'active.scad';
 const MAX_WINDOWS = 4;
@@ -59,7 +117,8 @@ class McpClient {
       await this._send('initialize', {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'ClawSCAD', version: '0.1.2' },
+        // Sourced from package.json so it can never drift from the app version.
+        clientInfo: { name: 'ClawSCAD', version: app.getVersion() },
       });
       this._notify('notifications/initialized');
       this.ready = true;
@@ -330,6 +389,8 @@ function initWorkspace(ctx) {
   settings.mcpServers.openscad = {
     command: 'npx',
     args: ['-y', 'openscad-mcp-server'],
+    // Point the MCP server at the same bundled binary ClawSCAD uses
+    env: { OPENSCAD_PATH: OPENSCAD_BIN },
   };
   fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
 }
@@ -475,7 +536,7 @@ function processRenderQueue(ctx) {
 
   ctxSend(ctx, 'render:start', { file: path.basename(scadPath) });
 
-  execFile(OPENSCAD_BIN, ['-o', outputPath, scadPath], { timeout: 120000 }, (err, stdout, stderr) => {
+  execFile(OPENSCAD_BIN, ['-o', outputPath, scadPath], { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
     ctx.isRendering = false;
 
     if (err || !fs.existsSync(outputPath)) {
@@ -645,28 +706,34 @@ function spawnPty2(ctx, cmd, args = []) {
   return proc;
 }
 
-function startTerminal(ctx) {
-  const shell = process.env.SHELL || '/bin/bash';
-  try {
-    ctx.ptyProcess = spawnPty(ctx, 'claude', []);
-  } catch {
-    ctx.ptyProcess = spawnPty(ctx, shell, []);
+// Spawn a pty running the Claude Code CLI. If the binary can't be found (or
+// fails to launch), drop the user into a normal shell with a hint on how to
+// install it — we don't silently install global npm packages on their behalf.
+function spawnClaude(ctx, args = []) {
+  const bin = resolveClaude();
+  if (bin) {
+    try { return spawnPty(ctx, bin, args); } catch {}
   }
+  const proc = spawnPty(ctx, DEFAULT_SHELL, []);
+  ctxSend(ctx, 'terminal:data',
+    '\r\n\x1b[33mClaude Code CLI not found.\x1b[0m Install it from ' +
+    'https://docs.claude.com/en/docs/claude-code/setup then restart the terminal.\r\n\r\n');
+  return proc;
+}
+
+function startTerminal(ctx) {
+  ctx.ptyProcess = spawnClaude(ctx, []);
   ctx.ptyProcess.onExit(() => {
-    ctx.ptyProcess = spawnPty(ctx, shell, []);
+    ctx.ptyProcess = spawnPty(ctx, DEFAULT_SHELL, []);
     ctx.ptyProcess.onExit(() => {});
   });
 }
 
 function restartTerminal(ctx, args = []) {
   if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
-  try {
-    ctx.ptyProcess = spawnPty(ctx, 'claude', args);
-  } catch {
-    ctx.ptyProcess = spawnPty(ctx, process.env.SHELL || '/bin/bash', []);
-  }
+  ctx.ptyProcess = spawnClaude(ctx, args);
   ctx.ptyProcess.onExit(() => {
-    ctx.ptyProcess = spawnPty(ctx, process.env.SHELL || '/bin/bash', []);
+    ctx.ptyProcess = spawnPty(ctx, DEFAULT_SHELL, []);
     ctx.ptyProcess.onExit(() => {});
   });
 }
@@ -719,9 +786,9 @@ ipcMain.handle('terminal2:spawn', (event) => {
   const ctx = getCtx(event);
   if (!ctx || ctx.ptyProcess2) return;
   try {
-    ctx.ptyProcess2 = spawnPty2(ctx, 'claude', []);
+    ctx.ptyProcess2 = spawnPty2(ctx, resolveClaude() || 'claude', []);
   } catch {
-    ctx.ptyProcess2 = spawnPty2(ctx, process.env.SHELL || '/bin/bash', []);
+    ctx.ptyProcess2 = spawnPty2(ctx, DEFAULT_SHELL, []);
   }
   ctx.ptyProcess2.onExit(() => { ctx.ptyProcess2 = null; });
 });
@@ -957,7 +1024,7 @@ ipcMain.handle('app:export', async (event, format) => {
     : ['-o', result.filePath, scadPath];
 
   return new Promise((resolve) => {
-    execFile(OPENSCAD_BIN, args, { timeout: 120000 }, (err, stdout, stderr) => {
+    execFile(OPENSCAD_BIN, args, { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
       if (err) {
         resolve({ error: stderr || err.message });
       } else {
