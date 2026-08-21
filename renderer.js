@@ -170,6 +170,21 @@ editorEditToggle.addEventListener('click', () => {
 editorSaveBtn.addEventListener('click', async () => {
   if (!currentEditorFile || editorReadOnly) return;
   const content = monacoEditor.getValue();
+
+  // Checkpoints are immutable. Saving over one destroys history that has no
+  // undo, so a tracked file saves to a NEW checkpoint instead — the watcher
+  // adopts it as a child. Untracked scratch files save in place as before.
+  const tracked = await window.api.isTrackedCheckpoint(currentEditorFile);
+  if (tracked) {
+    const res = await window.api.saveAsCheckpoint(currentEditorFile, content);
+    if (res && res.ok) {
+      showToast(`Saved as new checkpoint: ${res.file}`, 'success');
+    } else if (!res || !res.canceled) {
+      showToast('Save failed', 'error');
+    }
+    return;
+  }
+
   const ok = await window.api.saveFile(currentEditorFile, content);
   if (ok) {
     showToast('File saved', 'success');
@@ -950,6 +965,11 @@ function showRenderOverlay(filename) {
   // Remove current model from scene during render (cached objects stay in memory)
   removeCurrentFromScene();
 
+  // A new render supersedes whatever failure was on screen.
+  renderFaultEl.hidden = true;
+  renderOverlay.classList.remove('is-error');
+  renderOverlay.querySelector('.spinner').style.display = '';
+  renderOverlay.querySelector('.overlay-bar').style.display = '';
   renderOverlay.classList.add('visible');
   renderOverlay.querySelector('.overlay-text').textContent =
     `Rendering ${filename || ''}...`;
@@ -967,23 +987,51 @@ function hideRenderOverlay() {
   }
 }
 
-function showRenderError(error) {
+const renderFaultEl = document.getElementById('render-fault');
+const renderFaultDetailEl = document.getElementById('render-fault-detail');
+
+// Headline per fault class. "Render Failed" for all three was actively
+// misleading: a missing binary and a bad polygon are not the same problem and
+// do not have the same fix.
+const FAULT_HEADLINES = {
+  model: 'Render failed',
+  timeout: 'Render timed out after 2:00 — the model may just be heavy',
+  environment: 'OpenSCAD could not be started',
+};
+
+function showRenderError(error, fault = 'model') {
   if (renderTimer) {
     clearInterval(renderTimer);
     renderTimer = null;
   }
-  renderOverlay.querySelector('.overlay-text').textContent = 'Render Failed';
-  renderTimeEl.textContent = error.substring(0, 120);
+  renderOverlay.classList.add('visible', 'is-error');
+  renderOverlay.querySelector('.overlay-text').textContent =
+    FAULT_HEADLINES[fault] || FAULT_HEADLINES.model;
+  // #render-time is 24px display type for the elapsed clock — prose does not
+  // belong in it. That is where the old code put a 120-char error slice.
+  renderTimeEl.textContent = '';
   renderOverlay.querySelector('.spinner').style.display = 'none';
   renderOverlay.querySelector('.overlay-bar').style.display = 'none';
-  // Auto-hide after 5s
-  setTimeout(() => {
-    hideRenderOverlay();
-    // Restore spinner for next render
-    renderOverlay.querySelector('.spinner').style.display = '';
-    renderOverlay.querySelector('.overlay-bar').style.display = '';
-  }, 5000);
+  // Full text, kept until dismissed — no truncation, no auto-hide.
+  renderFaultDetailEl.textContent = error;
+  renderFaultEl.hidden = false;
 }
+
+function dismissRenderFault() {
+  renderFaultEl.hidden = true;
+  renderOverlay.classList.remove('is-error');
+  renderOverlay.querySelector('.spinner').style.display = '';
+  renderOverlay.querySelector('.overlay-bar').style.display = '';
+  hideRenderOverlay();
+}
+
+document.getElementById('render-fault-dismiss').addEventListener('click', dismissRenderFault);
+document.getElementById('render-fault-copy').addEventListener('click', () => {
+  navigator.clipboard.writeText(renderFaultDetailEl.textContent || '').then(
+    () => showToast('Error copied', 'success'),
+    () => showToast('Could not copy', 'error')
+  );
+});
 
 function updateRenderTimer() {
   const elapsed = Math.floor((Date.now() - renderStartTime) / 1000);
@@ -1004,8 +1052,13 @@ window.api.onRenderComplete((data) => {
 });
 
 window.api.onRenderError((data) => {
-  showRenderError(data.error);
-  showToast(`Render failed: ${data.file}`, 'error');
+  showRenderError(data.error, data.fault);
+  showToast(
+    data.fault === 'timeout'
+      ? `Render timed out: ${data.file}`
+      : `Render failed: ${data.file}`,
+    'error'
+  );
 
   // Set Monaco error markers if editor has the file loaded
   if (data.errors && data.errors.length > 0) {
@@ -1028,6 +1081,23 @@ window.api.onRenderError((data) => {
 
 window.api.onRenderWarning((data) => {
   showToast(`Warning: ${data.file}`, 'info');
+});
+
+// A setup fault, not a model fault. Say what is actually wrong and what would
+// fix it, and never phrase it as "your model failed".
+window.api.onRenderEnvError((data) => {
+  showRenderError(
+    `ClawSCAD could not run OpenSCAD.\n\n` +
+      `Tried:  ${data.binary}\n` +
+      `Error:  ${data.code} — ${data.error}\n\n` +
+      `Your model was never compiled, so nothing about it is known to be wrong.\n` +
+      `Fix the install, then render again:\n` +
+      `  • run "npm run download-openscad" to fetch the bundled copy, or\n` +
+      `  • set the OPENSCAD_BINARY environment variable to a full path, or\n` +
+      `  • put openscad on your PATH.`,
+    'environment'
+  );
+  showToast('OpenSCAD not found', 'error');
 });
 
 window.api.onModelUpdate((update) => {
@@ -1058,8 +1128,13 @@ function renderTree() {
   treeEl.innerHTML = '';
 
   if (Object.keys(checkpoints).length === 0) {
+    // The empty state is the only place the app can teach its core idea, so it
+    // says what a checkpoint IS rather than just that there aren't any.
     treeEl.innerHTML =
-      '<div class="cp-empty">No checkpoints yet.<br>Ask Claude to create a model!</div>';
+      '<div class="cp-empty"><strong>No checkpoints yet.</strong>' +
+      'Every file Claude writes becomes a permanent checkpoint here. ' +
+      'Nothing is ever overwritten — changes always create a new one, ' +
+      'so you can always come back.</div>';
     return;
   }
 
@@ -1090,6 +1165,9 @@ function renderTree() {
     node.className = 'cp-node' + (isActive ? ' active' : '');
     node.dataset.id = id;
     node.dataset.depth = depth;
+    // Drives the diamond dot + GEN badge: a mesh-derived checkpoint is a
+    // starting point to branch from, not a finished part.
+    if (cp.kind) node.dataset.kind = cp.kind;
 
     // Tree prefix with box-drawing characters
     if (depth > 0) {
@@ -1112,6 +1190,22 @@ function renderTree() {
     label.className = 'cp-label';
     label.textContent = cp.label || cp.file;
     node.appendChild(label);
+
+    if (cp.kind === 'generated') {
+      const badge = document.createElement('span');
+      badge.className = 'cp-badge';
+      badge.textContent = 'GEN';
+      badge.title = 'Generated sculpt — branch it to add features, never edit it';
+      node.appendChild(badge);
+    }
+
+    if (cp.discovered) {
+      const badge = document.createElement('span');
+      badge.className = 'cp-badge cp-badge-found';
+      badge.textContent = 'FOUND';
+      badge.title = 'Found on disk and adopted into history — created while ClawSCAD was closed';
+      node.appendChild(badge);
+    }
 
     const time = document.createElement('span');
     time.className = 'cp-time';

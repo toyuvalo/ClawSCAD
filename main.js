@@ -471,6 +471,92 @@ function loadState(ctx) {
   } catch {
     ctx.state = { checkpoints: {}, active: null };
   }
+  if (!ctx.state || typeof ctx.state !== 'object') ctx.state = { checkpoints: {}, active: null };
+  if (!ctx.state.checkpoints) ctx.state.checkpoints = {};
+  reconcileWorkspace(ctx);
+}
+
+// Adopt .scad files that exist on disk but aren't in the registry.
+//
+// The watcher starts with ignoreInitial:true, so anything created while the app
+// was closed — a plain `claude` CLI session, a claw-gen run, a git checkout or
+// pull — was invisible forever. For a tool whose whole promise is "every file is
+// a permanent checkpoint you can come back to", silently omitting real work is
+// the worst failure available, and it had already happened: this workspace's
+// registry stopped at sport-wall-climbers while three later .scad files sat on
+// disk unlisted.
+//
+// Non-destructive by construction: it only ADDS records. It never rewrites
+// active.scad and never repoints an active checkpoint the user already has.
+function reconcileWorkspace(ctx) {
+  let files;
+  try {
+    files = fs
+      .readdirSync(ctx.workspaceDir)
+      .filter((f) => f.endsWith('.scad') && f !== ACTIVE_FILE);
+  } catch {
+    return;
+  }
+
+  const known = new Set(Object.values(ctx.state.checkpoints).map((c) => c.file));
+  const missing = files
+    .filter((f) => !known.has(f))
+    .map((f) => {
+      const full = path.join(ctx.workspaceDir, f);
+      let mtime = 0;
+      try { mtime = fs.statSync(full).mtimeMs; } catch {}
+      return { file: f, full, mtime };
+    })
+    // Oldest first, so the adopted chain runs in the order the work was actually done.
+    .sort((a, b) => a.mtime - b.mtime);
+
+  // A dangling active pointer (its checkpoint was deleted) would otherwise
+  // parent every adopted node to an id that no longer exists.
+  if (ctx.state.active && !ctx.state.checkpoints[ctx.state.active]) ctx.state.active = null;
+
+  let parent = ctx.state.active || newestCheckpointId(ctx) || null;
+
+  for (const m of missing) {
+    const id = generateId();
+    ctx.state.checkpoints[id] = {
+      file: m.file,
+      parent,
+      label: path.basename(m.file, '.scad').replace(/[_-]/g, ' ').substring(0, 30),
+      description: extractDescription(m.full),
+      kind: detectKind(m.full),
+      sessionId: null,
+      // mtime, not now — an adopted file's real age is what makes the tree honest.
+      created: new Date(m.mtime || Date.now()).toISOString(),
+      discovered: true,
+    };
+    parent = id;
+  }
+
+  // Only initialise a missing pointer; never move one the user already set.
+  if (!ctx.state.active) ctx.state.active = newestCheckpointId(ctx);
+
+  if (missing.length) saveState(ctx);
+}
+
+function newestCheckpointId(ctx) {
+  const entries = Object.entries(ctx.state.checkpoints);
+  if (!entries.length) return null;
+  return entries.sort(
+    (a, b) => new Date(a[1].created || 0) - new Date(b[1].created || 0)
+  )[entries.length - 1][0];
+}
+
+// A mesh-derived checkpoint import()s geometry instead of describing it. The
+// workspace rule is branch-don't-edit for these, so the tree needs to say which
+// is which — see the generated-sculpt section of the workspace CLAUDE.md.
+function detectKind(scadPath) {
+  try {
+    return /^\s*[^\/\n]*\bimport\s*\(/m.test(fs.readFileSync(scadPath, 'utf-8'))
+      ? 'generated'
+      : 'parametric';
+  } catch {
+    return 'parametric';
+  }
 }
 
 function saveState(ctx) {
@@ -536,6 +622,7 @@ function addCheckpoint(ctx, scadFile) {
     parent: ctx.state.active,
     label: path.basename(basename, '.scad').replace(/[_-]/g, ' ').substring(0, 30),
     description,
+    kind: detectKind(scadFile),
     sessionId,
     created: new Date().toISOString(),
   };
@@ -593,31 +680,59 @@ function processRenderQueue(ctx) {
   if (ctx.isRendering || ctx.renderQueue.length === 0) return;
   ctx.isRendering = true;
   const scadPath = ctx.renderQueue.shift();
-  const outputExt = ctx.renderFormat === '3mf' ? '.3mf' : '.stl';
-  const outputPath = scadPath.replace(/\.scad$/, outputExt);
+  // .3mf is the deliverable standard, so every render starts by attempting it.
+  // The STL fallback is scoped to the one file that needed it and is cleared as
+  // soon as that file resolves — it used to flip ctx.renderFormat for the rest
+  // of the session, so one bad 3mf silently killed colour until the app restarted.
+  const format = ctx.stlFallbackFor === scadPath ? 'stl' : '3mf';
+  ctx.renderFormat = format;
+  const outputPath = scadPath.replace(/\.scad$/, format === '3mf' ? '.3mf' : '.stl');
 
   ctxSend(ctx, 'render:start', { file: path.basename(scadPath) });
 
   execFile(OPENSCAD_BIN, ['-o', outputPath, scadPath], { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
     ctx.isRendering = false;
+    const fault = classifyRenderFailure(err, outputPath);
 
-    if (err || !fs.existsSync(outputPath)) {
-      if (ctx.renderFormat === '3mf') {
-        ctx.renderFormat = 'stl';
+    if (fault === 'environment') {
+      // NOT a model problem. Never write RENDER_ERRORS.md and never nudge Claude
+      // to "create a fixed .scad" — the model may be perfect and Claude cannot
+      // install a binary. Surface it as a setup fault instead.
+      ctx.stlFallbackFor = null;
+      ctxSend(ctx, 'render:env-error', {
+        file: path.basename(scadPath),
+        binary: OPENSCAD_BIN,
+        code: (err && err.code) || 'UNKNOWN',
+        error: (err && err.message) || 'OpenSCAD could not be started',
+      });
+      processRenderQueue(ctx);
+      return;
+    }
+
+    if (fault) {
+      // Retry a failed 3mf once as STL, for this file only. Not for timeouts —
+      // a heavy model would just burn another two minutes.
+      if (format === '3mf' && fault !== 'timeout') {
+        ctx.stlFallbackFor = scadPath;
         ctx.renderQueue.unshift(scadPath);
         processRenderQueue(ctx);
         return;
       }
+      ctx.stlFallbackFor = null;
       const errorText = stderr || (err && err.message) || 'Unknown error';
       const errors = parseOpenSCADErrors(errorText);
       ctxSend(ctx, 'render:error', {
         file: path.basename(scadPath),
         error: errorText,
         errors,
+        fault,
       });
-      // Auto-iteration: write errors so Claude can see them and nudge the terminal
-      writeRenderErrors(ctx, path.basename(scadPath), errorText, errors);
+      // Auto-iteration: only a genuine model rejection is Claude's to fix.
+      if (fault === 'model') {
+        writeRenderErrors(ctx, path.basename(scadPath), errorText, errors);
+      }
     } else {
+      ctx.stlFallbackFor = null;
       if (stderr && stderr.includes('WARNING')) {
         ctxSend(ctx, 'render:warning', { file: path.basename(scadPath), warnings: stderr });
       }
@@ -628,6 +743,21 @@ function processRenderQueue(ctx) {
 
     processRenderQueue(ctx);
   });
+}
+
+// Three very different faults used to collapse into one "Render Failed":
+//   environment — no binary, no permission. Nothing about the model is wrong.
+//   timeout     — the model may be correct and merely heavy (boolean-heavy
+//                 BOSL2/metaball work routinely is).
+//   model       — OpenSCAD ran and rejected the geometry. Only this one is
+//                 Claude's to fix, and only this one may write RENDER_ERRORS.md.
+function classifyRenderFailure(err, outputPath) {
+  if (err) {
+    if (err.code === 'ENOENT' || err.code === 'EACCES' || err.code === 'EPERM') return 'environment';
+    if (err.killed || err.signal === 'SIGTERM' || err.code === 'ETIMEDOUT') return 'timeout';
+  }
+  if (err || !fs.existsSync(outputPath)) return 'model';
+  return null;
 }
 
 function parseOpenSCADErrors(stderr) {
@@ -1048,6 +1178,47 @@ ipcMain.handle('file:read-model', (_, filePath, format) => {
 
 ipcMain.handle('file:save', (_, filePath, content) => {
   try { fs.writeFileSync(filePath, content, 'utf-8'); return true; } catch { return false; }
+});
+
+// Save the editor buffer as a NEW .scad instead of overwriting the open one.
+//
+// Every .scad is an immutable checkpoint, but the app's own Edit + Save wrote
+// straight over the file with no warning — making the UI the easiest way in the
+// product to violate the product's central rule, with no undo. The watcher picks
+// the new file up and it becomes a child checkpoint on its own.
+ipcMain.handle('file:save-as-checkpoint', async (event, currentPath, content) => {
+  const ctx = getCtx(event);
+  if (!ctx) return { ok: false };
+
+  const base = path.basename(currentPath || 'model.scad', '.scad');
+  let suggested = path.join(ctx.workspaceDir, `${base}-v2.scad`);
+  for (let n = 2; fs.existsSync(suggested) && n < 100; n++) {
+    suggested = path.join(ctx.workspaceDir, `${base}-v${n}.scad`);
+  }
+
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const res = await dialog.showSaveDialog(win, {
+    title: 'Save as new checkpoint',
+    defaultPath: suggested,
+    filters: [{ name: 'OpenSCAD', extensions: ['scad'] }],
+  });
+  if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+
+  try {
+    fs.writeFileSync(res.filePath, content, 'utf-8');
+    return { ok: true, file: path.basename(res.filePath) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Is this file a checkpoint the registry is tracking? The renderer uses this to
+// decide whether Save needs the branch-don't-overwrite treatment.
+ipcMain.handle('checkpoint:is-tracked', (event, filePath) => {
+  const ctx = getCtx(event);
+  if (!ctx || !filePath) return false;
+  const base = path.basename(filePath);
+  return Object.values(ctx.state.checkpoints).some((c) => c.file === base);
 });
 
 ipcMain.handle('checkpoint:list', (event) => {

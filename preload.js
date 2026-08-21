@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('api', {
   onRenderError: (cb) => ipcRenderer.on('render:error', (_, data) => cb(data)),
   forceRender: () => ipcRenderer.invoke('render:force'),
   onRenderWarning: (cb) => ipcRenderer.on('render:warning', (_, data) => cb(data)),
+  // Setup fault (missing / unrunnable OpenSCAD). Deliberately a separate channel
+  // from render:error so an environment problem never enters the model-fix loop.
+  onRenderEnvError: (cb) => ipcRenderer.on('render:env-error', (_, data) => cb(data)),
 
   // Sessions
   getSessions: () => ipcRenderer.invoke('sessions:list'),
@@ -41,6 +44,9 @@ contextBridge.exposeInMainWorld('api', {
   readFile: (filePath) => ipcRenderer.invoke('file:read', filePath),
   readModelFile: (filePath, format) => ipcRenderer.invoke('file:read-model', filePath, format),
   saveFile: (filePath, content) => ipcRenderer.invoke('file:save', filePath, content),
+  saveAsCheckpoint: (filePath, content) =>
+    ipcRenderer.invoke('file:save-as-checkpoint', filePath, content),
+  isTrackedCheckpoint: (filePath) => ipcRenderer.invoke('checkpoint:is-tracked', filePath),
   onFileContent: (cb) => ipcRenderer.on('file:content', (_, data) => cb(data)),
 
   // Workspace

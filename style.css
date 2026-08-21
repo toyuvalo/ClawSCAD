@@ -1,3 +1,50 @@
+/* ── Design tokens ───────────────────────────────────────────────────────
+   The file had no :root block and no custom properties at all — ~40 near
+   identical blue-greys were hand-typed, so the same conceptual colour had
+   several values depending on where it was written. These give each colour a
+   ROLE, and the text values are set at luminances that clear WCAG AA at the
+   size they're actually used: the worst offenders were the timestamps (1.42:1)
+   and the first-run empty state (1.67:1), i.e. functionally invisible.
+   Remaining literals are swapped incrementally — see the master plan. */
+:root {
+  /* Surfaces */
+  --surface-0: #08081a;
+  --surface-1: #0a0a18;
+  --surface-2: #0d0d1a;
+  --surface-3: #0e0e22;
+
+  /* Borders, by intent */
+  --border-hairline: #141430;
+  --border-panel: #1e1e40;
+  --border-control: #2a2a55;
+  --border-hover: #3c3c7a;
+
+  /* Text ladder — contrast quoted against --surface-1 */
+  --fg: #c8c8dc;            /* 11.5:1 primary */
+  --fg-secondary: #9a9ac4;  /*  7.0:1 inactive checkpoint labels */
+  --fg-muted: #7f7fae;      /*  4.9:1 status + secondary metadata */
+  --fg-faint: #6a6a98;      /*  3.6:1 timestamps, tree rail (decorative, >=10px) */
+  --fg-disabled: #4a4a70;
+
+  /* Accents: two, plus semantics */
+  --accent: #4488ff;
+  --accent-label: #7f9fdd;  /*  6.2:1 uppercase chrome labels */
+  --geometry: #44cc77;
+  --warn: #f0a63c;
+  --danger: #ff6b6b;        /* was #cc4444 = 3.9:1 */
+
+  /* Mesh-derived checkpoints read differently from parametric ones */
+  --cp-generated: #b07cff;
+
+  --hover-wash: #151538;
+  --active-wash: #17173c;
+
+  --font-mono: "JetBrains Mono", Menlo, Monaco, monospace;
+  --t-fast: 90ms;
+  --t-base: 150ms;
+  --ease: cubic-bezier(.4, 0, .2, 1);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -7,11 +54,41 @@
 html, body {
   height: 100%;
   overflow: hidden;
-  background: #0d0d1a;
+  background: var(--surface-2);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #c0c0d0;
   user-select: none;
   font-size: 13px;
+  /* Brand-mandated, and it stops the render timer and timestamps jittering. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* body has user-select:none, which also made source code, logs, tooltips and
+   paths uncopyable — in a tool whose whole job is producing code. Opt those
+   back in. */
+#editor-container,
+.gen-log,
+#cp-tooltip,
+.prop-val,
+#workspace-path,
+.overlay-fault-detail,
+.vp2-editor-content {
+  user-select: text;
+}
+
+/* There was not one :focus-visible rule in the file, against six `outline:none`
+   declarations — the app had no visible keyboard focus anywhere. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
 }
 
 body.dragging * {
@@ -340,7 +417,7 @@ body.dragging #splitter {
   border-radius: 4px;
   border: 1px solid #333355;
   background: rgba(10, 10, 26, 0.85);
-  color: #666688;
+  color: var(--fg-secondary);
   font-size: 12px;
   cursor: pointer;
   display: flex;
@@ -409,13 +486,13 @@ body.dragging #splitter {
   align-items: center;
   padding: 0 8px;
   font-size: 10px;
-  color: #505070;
+  color: var(--fg-muted);
   gap: 8px;
   flex-shrink: 0;
 }
 
 .vp2-status-bar .label {
-  color: #4466aa;
+  color: var(--accent-label);
   font-weight: 700;
   font-size: 9px;
   text-transform: uppercase;
@@ -443,12 +520,12 @@ body.dragging #splitter {
   padding: 0 6px;
   gap: 4px;
   font-size: 10px;
-  color: #505070;
+  color: var(--fg-muted);
   background: linear-gradient(180deg, #0c0c1e, #0a0a18);
 }
 
 .vp2-editor-header .label {
-  color: #4466aa;
+  color: var(--accent-label);
   font-weight: 700;
   font-size: 9px;
   text-transform: uppercase;
@@ -497,13 +574,13 @@ body.dragging #splitter {
   padding: 0 6px;
   gap: 4px;
   font-size: 10px;
-  color: #505070;
+  color: var(--fg-muted);
   background: linear-gradient(180deg, #0c0c1e, #0a0a18);
   flex-shrink: 0;
 }
 
 .vp2-checkpoint-header .label {
-  color: #4466aa;
+  color: var(--accent-label);
   font-weight: 700;
   font-size: 9px;
   text-transform: uppercase;
@@ -692,7 +769,7 @@ body.dragging #splitter {
 }
 
 .prop-key {
-  color: #666688;
+  color: var(--fg-secondary);
 }
 
 .prop-val {
@@ -736,7 +813,7 @@ body.dragging #splitter {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #666688;
+  color: var(--fg-secondary);
   font-size: 10px;
 }
 
@@ -841,7 +918,7 @@ body.dragging #splitter {
 .overlay-time {
   font-size: 24px;
   font-weight: 300;
-  color: #4466aa;
+  color: var(--accent-label);
   font-variant-numeric: tabular-nums;
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
 }
@@ -852,6 +929,49 @@ body.dragging #splitter {
   background: #1a1a3a;
   border-radius: 2px;
   overflow: hidden;
+}
+
+/* Failure detail — persistent and scrollable. The previous treatment truncated
+   the error to 120 chars, put it in the 24px timer element, and deleted the
+   whole overlay after 5s with no way to get it back. */
+.overlay-fault {
+  width: min(560px, 70vw);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.overlay-fault[hidden] {
+  display: none;
+}
+
+.overlay-fault-detail {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-panel);
+  border-radius: 6px;
+  background: var(--surface-0);
+  color: var(--fg-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
+}
+
+.overlay-fault-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* An error state must not keep animating a progress bar behind it. */
+#render-overlay.is-error .spinner,
+#render-overlay.is-error .overlay-bar {
+  display: none;
 }
 
 .bar-fill {
@@ -878,7 +998,7 @@ body.dragging #splitter {
   align-items: center;
   padding: 0 12px;
   font-size: 11px;
-  color: #505070;
+  color: var(--fg-muted);
   gap: 12px;
   flex-shrink: 0;
 }
@@ -919,7 +1039,7 @@ body.dragging #splitter {
 }
 
 #status-bar .label {
-  color: #4466aa;
+  color: var(--accent-label);
   font-weight: 700;
   letter-spacing: 0.5px;
   font-size: 10px;
@@ -954,7 +1074,7 @@ body.dragging #splitter {
   align-items: center;
   padding: 0 8px;
   font-size: 11px;
-  color: #505070;
+  color: var(--fg-muted);
   background: linear-gradient(180deg, #0c0c1e, #0a0a18);
   border-bottom: 1px solid #111130;
   flex-shrink: 0;
@@ -962,7 +1082,7 @@ body.dragging #splitter {
 }
 
 #editor-header .label {
-  color: #4466aa;
+  color: var(--accent-label);
   font-weight: 700;
   letter-spacing: 0.5px;
   font-size: 10px;
@@ -987,7 +1107,7 @@ body.dragging #splitter {
   height: 20px;
   border: none;
   background: transparent;
-  color: #4466aa;
+  color: var(--accent-label);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1058,14 +1178,14 @@ body.dragging #splitter {
   align-items: center;
   padding: 0 12px;
   font-size: 11px;
-  color: #505070;
+  color: var(--fg-muted);
   background: linear-gradient(180deg, #0c0c1e, #0a0a18);
   border-bottom: 1px solid #111130;
   flex-shrink: 0;
 }
 
 #checkpoint-header .label {
-  color: #4466aa;
+  color: var(--accent-label);
   font-weight: 700;
   letter-spacing: 0.5px;
   font-size: 10px;
@@ -1091,7 +1211,7 @@ body.dragging #splitter {
   height: 20px;
   border: none;
   background: transparent;
-  color: #4466aa;
+  color: var(--accent-label);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1192,7 +1312,7 @@ body.dragging #splitter {
 }
 
 #cp-tooltip-meta {
-  color: #555580;
+  color: var(--fg-muted);
   font-size: 10px;
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
 }
@@ -1221,11 +1341,19 @@ body.dragging #splitter {
 }
 
 .cp-empty {
-  padding: 20px 16px;
+  padding: 24px 16px;
   text-align: center;
-  color: #333360;
+  color: var(--fg-muted);
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* Two weights so it reads as an invitation, not an error. */
+.cp-empty strong {
+  display: block;
+  color: var(--fg-secondary);
+  font-weight: 600;
+  margin-bottom: 4px;
 }
 
 /* ── Checkpoint Nodes ──────────────────────────────────────────────── */
@@ -1242,15 +1370,63 @@ body.dragging #splitter {
 }
 
 .cp-node:hover {
-  background: #111128;
+  background: var(--hover-wash);
 }
 
+/* A 4% wash and a small dot were the only "active" signals, which is nearly
+   invisible in a tall tree. The left accent bar makes the branch point
+   unmistakable at a glance. */
 .cp-node.active {
-  background: #151538;
+  background: var(--active-wash);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.cp-node.active .cp-label {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* Mesh-derived checkpoints carry a different rule — branch, never edit — so
+   they get shape AND colour, never colour alone. */
+.cp-node[data-kind="generated"] .cp-dot {
+  border-radius: 1px;
+  transform: rotate(45deg);
+  border-color: var(--cp-generated);
+}
+
+.cp-node[data-kind="generated"].active {
+  box-shadow: inset 2px 0 0 var(--cp-generated);
+}
+
+.cp-node[data-kind="generated"].active .cp-dot {
+  background: var(--cp-generated);
+  border-color: var(--cp-generated);
+  box-shadow: 0 0 8px #b07cff55;
+}
+
+.cp-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 6px;
+  color: var(--cp-generated);
+  background: #b07cff22;
+  border: 1px solid #b07cff40;
+  flex-shrink: 0;
+}
+
+/* Adopted from disk rather than observed being written. */
+.cp-badge.cp-badge-found {
+  color: var(--fg-muted);
+  background: #7f7fae1a;
+  border-color: #7f7fae33;
 }
 
 .cp-prefix {
-  color: #2a2a5a;
+  color: var(--fg-faint);
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
   font-size: 12px;
   white-space: pre;
@@ -1296,7 +1472,7 @@ body.dragging #splitter {
 
 .cp-label {
   flex: 1;
-  color: #666688;
+  color: var(--fg-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1380,7 +1556,7 @@ body.dragging #splitter {
 }
 
 .cp-time {
-  color: #2a2a44;
+  color: var(--fg-faint);
   font-size: 10px;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
@@ -1443,13 +1619,13 @@ body.dragging #splitter {
   align-items: center;
   padding: 0 12px;
   font-size: 11px;
-  color: #505070;
+  color: var(--fg-muted);
   flex-shrink: 0;
   position: relative;
 }
 
 .terminal-pane-header .label {
-  color: #4466aa;
+  color: var(--accent-label);
   font-weight: 700;
   letter-spacing: 0.5px;
   font-size: 10px;
@@ -1557,7 +1733,7 @@ body.dragging #splitter {
 .session-empty {
   padding: 16px;
   text-align: center;
-  color: #333360;
+  color: var(--fg-muted);
   font-size: 11px;
 }
 
@@ -1651,7 +1827,7 @@ body.dragging #splitter {
 /* ── App Version (status bar) ─────────────────────────────────────── */
 
 .app-version {
-  color: #333360;
+  color: var(--fg-muted);
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
   font-size: 10px;
 }
@@ -1674,14 +1850,14 @@ body.dragging #splitter {
   align-items: center;
   padding: 0 12px;
   font-size: 11px;
-  color: #505070;
+  color: var(--fg-muted);
   background: linear-gradient(180deg, #0c0c1e, #0a0a18);
   border-bottom: 1px solid #111130;
   flex-shrink: 0;
 }
 
 #gen-header .label {
-  color: #4466aa;
+  color: var(--accent-label);
   font-weight: 700;
   letter-spacing: 0.5px;
   font-size: 10px;
@@ -1718,7 +1894,7 @@ body.dragging #splitter {
 .gen-empty {
   padding: 16px;
   text-align: center;
-  color: #555580;
+  color: var(--fg-muted);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -1766,7 +1942,7 @@ body.dragging #splitter {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #666688;
+  color: var(--fg-secondary);
   font-size: 10px;
 }
 
@@ -1867,10 +2043,12 @@ body.dragging #splitter {
   padding: 6px 8px;
   border: 1px solid #16162e;
   border-radius: 4px;
-  background: #08081200;
+  /* was #08081200 — an 8-digit hex whose 00 alpha made it fully transparent,
+     so the log had no background at all. */
+  background: var(--surface-0);
   font-family: "JetBrains Mono", Menlo, Monaco, monospace;
   font-size: 10px;
-  color: #555580;
+  color: var(--fg-muted);
   line-height: 1.5;
 }
 
@@ -1884,6 +2062,5 @@ body.dragging #splitter {
 }
 
 .gen-log-line.gen-log-error {
-  color: #cc6666;
-}
+  color: var(--danger);
 }

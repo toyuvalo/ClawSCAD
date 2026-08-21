@@ -92,6 +92,16 @@
               <div class="overlay-text">Rendering...</div>
               <div class="overlay-time" id="render-time">0:00</div>
               <div class="overlay-bar"><div class="bar-fill"></div></div>
+              <!-- Failure detail. Persistent and scrollable: the old overlay put
+                   a 120-char slice of the error into #render-time and deleted
+                   the whole thing after 5s, so looking away lost it for good. -->
+              <div id="render-fault" class="overlay-fault" hidden>
+                <pre id="render-fault-detail" class="overlay-fault-detail"></pre>
+                <div class="overlay-fault-actions">
+                  <button id="render-fault-copy" class="small-btn">Copy error</button>
+                  <button id="render-fault-dismiss" class="small-btn">Dismiss</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
