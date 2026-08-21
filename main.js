@@ -285,7 +285,18 @@ ClawSCAD automatically validates your .scad files when they are created. If a re
 - You will receive a message asking you to fix the issue
 - **Read RENDER_ERRORS.md**, understand the problem, and create a NEW fixed .scad file
 - Keep iterating until the render succeeds — don't present broken models to the user
-- Only stop when you have a clean render with no errors`;
+- Only stop when you have a clean render with no errors
+
+## Mesh-Derived Checkpoints
+Some checkpoints are generated from a 3D mesh rather than written by hand — the .scad file \`import()\`s a mesh file instead of describing geometry with primitives. Treat these as a **starting point to branch from, not a finished part**:
+- Never edit a mesh-derived .scad directly to add features. Branch into a NEW .scad that \`difference()\`s or \`union()\`s additional parametric geometry into the imported mesh (e.g. wrap the \`import()\` in \`difference() { import("meshes/x.stl"); translate([...]) cylinder(...); }\` to cut a hole).
+- Mesh-derived sculpts suit organic, decorative, or freeform shapes. For anything tolerance-critical (snap fits, threads, mating parts, load-bearing features), model it fully parametrically instead of relying on the imported mesh.
+- Keep the same checkpoint discipline: the imported mesh file is immutable too — never regenerate or overwrite it in place.`;
+
+// The app only ever owns the content between these markers — anything a
+// user writes before/after them in CLAUDE.md is never touched.
+const CLAUDE_MD_START = '<!-- clawscad:rules:start -->';
+const CLAUDE_MD_END = '<!-- clawscad:rules:end -->';
 
 function updateAllClaudeMd() {
   // Filter out destroyed windows
@@ -296,7 +307,7 @@ function updateAllClaudeMd() {
   }
 }
 
-function writeClaudeMd(ctx, allWorkspaces) {
+function buildClaudeMdBlock(ctx, allWorkspaces) {
   const others = allWorkspaces.filter((w) => w !== ctx.workspaceDir);
   let md = `# ClawSCAD Workspace — MANDATORY RULES\n\n${CLAUDE_MD_RULES}\n`;
 
@@ -315,7 +326,43 @@ function writeClaudeMd(ctx, allWorkspaces) {
     md += `You can read any file from these paths. If the user asks you to combine or reference designs from other projects, read the relevant .scad files directly.\n`;
   }
 
-  fs.writeFileSync(path.join(ctx.workspaceDir, 'CLAUDE.md'), md);
+  return md.replace(/\n+$/, '');
+}
+
+// Writes the app's generated rules into a delimited managed block inside
+// CLAUDE.md instead of overwriting the whole file, so any hand-written
+// content a user has in their workspace's CLAUDE.md survives every
+// window open/close. See CLAUDE_MD_START/END.
+function writeClaudeMd(ctx, allWorkspaces) {
+  const filePath = path.join(ctx.workspaceDir, 'CLAUDE.md');
+  const block = buildClaudeMdBlock(ctx, allWorkspaces);
+  const managed = `${CLAUDE_MD_START}\n${block}\n${CLAUDE_MD_END}`;
+
+  let existing = '';
+  try {
+    existing = fs.readFileSync(filePath, 'utf-8');
+  } catch {}
+
+  let output;
+  if (!existing) {
+    // No file yet — create it with just the managed block.
+    output = managed + '\n';
+  } else {
+    const startIdx = existing.indexOf(CLAUDE_MD_START);
+    const endIdx = existing.indexOf(CLAUDE_MD_END);
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      // Replace only the block's contents; everything before/after is
+      // preserved byte-for-byte.
+      output = existing.slice(0, startIdx) + managed + existing.slice(endIdx + CLAUDE_MD_END.length);
+    } else {
+      // Existing hand-written file with no markers — never clobber it.
+      // Prepend the managed block once; future runs will hit the marker
+      // path above and leave the user's content alone.
+      output = managed + '\n\n' + existing;
+    }
+  }
+
+  fs.writeFileSync(filePath, output);
 }
 
 function initWorkspace(ctx) {
@@ -650,30 +697,59 @@ function spawnPty2(ctx, cmd, args = []) {
   return proc;
 }
 
+// Windows has no /bin/bash — falling back to a hardcoded POSIX path there
+// throws, and (since that throw was previously uncaught) took the rest of
+// openWindow() down with it, silently skipping startFileWatcher() and
+// updateAllClaudeMd() for the whole window.
+function defaultShell() {
+  return process.env.SHELL || (process.platform === 'win32' ? (process.env.COMSPEC || 'cmd.exe') : '/bin/bash');
+}
+
 function startTerminal(ctx) {
-  const shell = process.env.SHELL || '/bin/bash';
+  const shell = defaultShell();
   try {
     ctx.ptyProcess = spawnPty(ctx, 'claude', []);
   } catch {
-    ctx.ptyProcess = spawnPty(ctx, shell, []);
+    try {
+      ctx.ptyProcess = spawnPty(ctx, shell, []);
+    } catch {
+      ctx.ptyProcess = null;
+    }
   }
-  ctx.ptyProcess.onExit(() => {
-    ctx.ptyProcess = spawnPty(ctx, shell, []);
-    ctx.ptyProcess.onExit(() => {});
-  });
+  if (ctx.ptyProcess) {
+    ctx.ptyProcess.onExit(() => {
+      try {
+        ctx.ptyProcess = spawnPty(ctx, shell, []);
+        ctx.ptyProcess.onExit(() => {});
+      } catch {
+        ctx.ptyProcess = null;
+      }
+    });
+  }
 }
 
 function restartTerminal(ctx, args = []) {
   if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
+  const shell = defaultShell();
   try {
     ctx.ptyProcess = spawnPty(ctx, 'claude', args);
   } catch {
-    ctx.ptyProcess = spawnPty(ctx, process.env.SHELL || '/bin/bash', []);
+    try {
+      ctx.ptyProcess = spawnPty(ctx, shell, []);
+    } catch {
+      ctx.ptyProcess = null;
+    }
   }
-  ctx.ptyProcess.onExit(() => {
-    ctx.ptyProcess = spawnPty(ctx, process.env.SHELL || '/bin/bash', []);
-    ctx.ptyProcess.onExit(() => {});
-  });
+  if (ctx.ptyProcess) {
+    ctx.ptyProcess.onExit(() => {
+      try {
+        ctx.ptyProcess = spawnPty(ctx, shell, []);
+        ctx.ptyProcess.onExit(() => {});
+      } catch {
+        ctx.ptyProcess = null;
+      }
+    });
+  }
 }
 
 // ── File Watcher ────────────────────────────────────────────────────────
