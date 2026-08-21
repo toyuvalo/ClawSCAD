@@ -551,9 +551,13 @@ function newestCheckpointId(ctx) {
 // is which — see the generated-sculpt section of the workspace CLAUDE.md.
 function detectKind(scadPath) {
   try {
-    return /^\s*[^\/\n]*\bimport\s*\(/m.test(fs.readFileSync(scadPath, 'utf-8'))
-      ? 'generated'
-      : 'parametric';
+    const src = fs.readFileSync(scadPath, 'utf-8');
+    // Strip comments FIRST, then look for the call. Testing a "no slash before
+    // import(" pattern instead would also reject a division on the same line,
+    // so `translate([0,0,-h/2]) import("x.stl");` silently read as parametric —
+    // mislabelling exactly the file the branch-don't-edit rule protects.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    return /\bimport\s*\(/.test(code) ? 'generated' : 'parametric';
   } catch {
     return 'parametric';
   }

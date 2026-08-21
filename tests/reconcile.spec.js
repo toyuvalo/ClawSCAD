@@ -153,6 +153,38 @@ test.describe('workspace reconciliation', () => {
     }
   });
 
+  // A generated sculpt mislabelled as parametric loses the branch-don't-edit
+  // signal on exactly the file that rule exists to protect.
+  test('kind detection survives divisions on the import line and ignores commented-out imports', async () => {
+    const ws = freshWorkspace('kindedge');
+    // A division earlier on the same line used to defeat detection.
+    fs.writeFileSync(
+      path.join(ws, 'divided.scad'),
+      '// Sculpt with a centring transform\nh = 40;\ntranslate([0,0,-h/2]) import("meshes/x.stl");\n'
+    );
+    // A commented-out import must NOT count as generated.
+    fs.writeFileSync(
+      path.join(ws, 'commented.scad'),
+      '// A parametric part\n// import("old.stl");\ncube([4,4,4]);\n'
+    );
+    // Block-commented too.
+    fs.writeFileSync(
+      path.join(ws, 'blockcomment.scad'),
+      '// Parametric with an old idea parked\n/* import("legacy.stl"); */\nsphere(5);\n'
+    );
+
+    const { electronApp } = await launch(ws);
+    try {
+      const cps = Object.values(readState(ws).checkpoints);
+      expect(cps.find((c) => c.file === 'divided.scad').kind).toBe('generated');
+      expect(cps.find((c) => c.file === 'commented.scad').kind).toBe('parametric');
+      expect(cps.find((c) => c.file === 'blockcomment.scad').kind).toBe('parametric');
+    } finally {
+      await electronApp.close();
+      removeWorkspace(ws);
+    }
+  });
+
   test('a second launch adopts nothing new and does not duplicate', async () => {
     const ws = freshWorkspace('idempotent');
     fs.writeFileSync(path.join(ws, 'part.scad'), '// Part\ncube(5);\n');
