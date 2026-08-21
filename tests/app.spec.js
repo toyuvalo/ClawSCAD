@@ -115,9 +115,9 @@ test.describe('ClawSCAD Menu', () => {
     expect(count).toBeGreaterThanOrEqual(10);
 
     // Check key menu items exist
-    await expect(page.locator('[data-action="new-window"]')).toBeVisible();
+    await expect(page.locator('[data-action="new-project"]')).toBeVisible();
     await expect(page.locator('[data-action="open-workspace"]')).toBeVisible();
-    await expect(page.locator('[data-action="new-session"]')).toBeVisible();
+    await expect(page.locator('[data-action="split-viewport"]')).toBeVisible();
     await expect(page.locator('[data-action="screenshot"]')).toBeVisible();
     await expect(page.locator('[data-action="toggle-editor"]')).toBeVisible();
     await expect(page.locator('[data-action="devtools"]')).toBeVisible();
@@ -128,8 +128,14 @@ test.describe('ClawSCAD Menu', () => {
     const menu = page.locator('#app-menu');
     await expect(menu).not.toHaveClass(/hidden/);
 
-    // Click on the viewport (outside the menu)
-    await page.locator('#viewport').click({ position: { x: 200, y: 200 } });
+    // Click on the viewport at a point genuinely outside the open dropdown.
+    // A fixed (200,200) lands *on* the menu, which overlays the viewport's top-left,
+    // so the click is intercepted and never reaches the viewport at all.
+    const menuBox = await menu.boundingBox();
+    const vpBox = await page.locator('#viewport').boundingBox();
+    const x = vpBox.x + vpBox.width / 2;
+    const y = Math.max(menuBox.y + menuBox.height + 40, vpBox.y + vpBox.height / 2);
+    await page.mouse.click(x, y);
     await expect(menu).toHaveClass(/hidden/);
   });
 
@@ -148,8 +154,9 @@ test.describe('ClawSCAD Menu', () => {
 
 test.describe('Viewport Toolbar', () => {
   test('toolbar is visible with all buttons', async () => {
-    const toolbar = page.locator('#viewport-toolbar');
+    const toolbar = page.locator('#viewport-toolbar-left');
     await expect(toolbar).toBeVisible();
+    await expect(page.locator('#viewport-toolbar-right')).toBeVisible();
 
     await expect(page.locator('#btn-render')).toBeVisible();
     await expect(page.locator('#btn-reset')).toBeVisible();
