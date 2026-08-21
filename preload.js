@@ -65,4 +65,19 @@ contextBridge.exposeInMainWorld('api', {
   listRecentPaths: () => ipcRenderer.invoke('app:list-recent'),
   browseDir: (dirPath) => ipcRenderer.invoke('app:browse-dir', dirPath),
   openPath: (inputPath) => ipcRenderer.invoke('app:open-path', inputPath),
+
+  // App version / README
+  getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+  openReadme: () => ipcRenderer.invoke('app:open-readme'),
+
+  // Generation pipeline (claw-gen)
+  getPipelineCliPath: () => ipcRenderer.invoke('pipeline:get-cli-path'),
+  setPipelineCliPath: (cliPath) => ipcRenderer.invoke('pipeline:set-cli-path', cliPath),
+  getPipelineBackends: () => ipcRenderer.invoke('pipeline:backends'),
+  startPipeline: (opts) => ipcRenderer.invoke('pipeline:start', opts),
+  cancelPipeline: () => ipcRenderer.invoke('pipeline:cancel'),
+  readPipelineImage: (filePath) => ipcRenderer.invoke('pipeline:read-image', filePath),
+  onPipelineEvent: (cb) => ipcRenderer.on('pipeline:event', (_, data) => cb(data)),
+  onPipelineLog: (cb) => ipcRenderer.on('pipeline:log', (_, data) => cb(data)),
+  onPipelineExit: (cb) => ipcRenderer.on('pipeline:exit', (_, data) => cb(data)),
 });

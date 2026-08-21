@@ -1378,6 +1378,229 @@ window.api.getCheckpoints().then((state) => {
   renderTree();
 });
 
+// ── Generate Panel ───────────────────────────────────────────────────────
+// Drives the `claw-gen` CLI (docs: clawscad-gen CONTRACT.md) through the
+// main process. The app hardcodes nothing about providers — backend names
+// and availability come only from `pipeline:backends`. When the pipeline is
+// unconfigured the panel shows a single calm line and nothing else.
+
+const genPanel = document.getElementById('gen-panel');
+const genEmpty = document.getElementById('gen-empty');
+const genConfiguredEl = document.getElementById('gen-configured');
+const genPromptEl = document.getElementById('gen-prompt');
+const genCountEl = document.getElementById('gen-count');
+const genBackendsEl = document.getElementById('gen-backends');
+const genGenerateBtn = document.getElementById('gen-generate-btn');
+const genMake3dBtn = document.getElementById('gen-make3d-btn');
+const genCancelBtn = document.getElementById('gen-cancel-btn');
+const genGridEl = document.getElementById('gen-image-grid');
+const genLogEl = document.getElementById('gen-log');
+const genReadmeLink = document.getElementById('gen-readme-link');
+
+document.getElementById('gen-toggle').addEventListener('click', () => {
+  genPanel.classList.toggle('collapsed');
+});
+
+genReadmeLink.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.api.openReadme();
+});
+
+let genBackendsList = [];
+let genSelectedKey = null; // `${round}:${index}` of the chosen candidate
+let genJob = null; // job slug learned from the event stream
+let genRunning = false;
+let genPendingStage = null; // drives the Make 3D chain: mesh -> prep -> checkpoint
+
+function genLog(message, isError) {
+  const line = document.createElement('div');
+  line.className = 'gen-log-line' + (isError ? ' gen-log-error' : '');
+  line.textContent = message;
+  genLogEl.appendChild(line);
+  genLogEl.scrollTop = genLogEl.scrollHeight;
+  while (genLogEl.children.length > 200) genLogEl.removeChild(genLogEl.firstChild);
+}
+
+function genSetRunning(running) {
+  genRunning = running;
+  genGenerateBtn.disabled = running;
+  genMake3dBtn.disabled = running || !genSelectedKey;
+  genCancelBtn.classList.toggle('hidden', !running);
+}
+
+async function refreshGenPipeline() {
+  const result = await window.api.getPipelineBackends();
+  if (!result || !result.configured) {
+    genEmpty.classList.remove('hidden');
+    genConfiguredEl.classList.add('hidden');
+    return;
+  }
+  genEmpty.classList.add('hidden');
+  genConfiguredEl.classList.remove('hidden');
+  genBackendsList = result.backends || [];
+  renderGenBackends();
+}
+
+function renderGenBackends() {
+  genBackendsEl.innerHTML = '';
+  for (const b of genBackendsList) {
+    if (b.kind && b.kind !== 'image') continue;
+    const label = document.createElement('label');
+    label.className = 'gen-backend-check' + (b.ok ? '' : ' unavailable');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = b.name;
+    input.checked = !!b.ok;
+    input.disabled = !b.ok;
+    label.appendChild(input);
+    const span = document.createElement('span');
+    span.textContent = b.name + (b.ok ? '' : ` (${b.reason || 'unavailable'})`);
+    label.appendChild(span);
+    genBackendsEl.appendChild(label);
+  }
+}
+
+function selectedGenBackends() {
+  return Array.from(genBackendsEl.querySelectorAll('input:checked')).map((i) => i.value);
+}
+
+async function addGenCandidate(evt) {
+  const key = `${evt.round}:${evt.index}`;
+  const dataUrl = await window.api.readPipelineImage(evt.path);
+  const card = document.createElement('div');
+  card.className = 'gen-candidate';
+  card.dataset.key = key;
+  if (dataUrl) {
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    img.alt = `Candidate ${evt.index} (${evt.backend})`;
+    card.appendChild(img);
+  }
+  card.addEventListener('click', () => {
+    genGridEl.querySelectorAll('.gen-candidate.selected').forEach((el) => el.classList.remove('selected'));
+    card.classList.add('selected');
+    genSelectedKey = key;
+    genMake3dBtn.disabled = genRunning;
+  });
+  genGridEl.appendChild(card);
+}
+
+function setGenScore(evt) {
+  const card = genGridEl.querySelector(`.gen-candidate[data-key="${evt.round}:${evt.index}"]`);
+  if (!card) return;
+  let badge = card.querySelector('.gen-candidate-score');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.className = 'gen-candidate-score';
+    card.appendChild(badge);
+  }
+  badge.textContent = evt.score;
+}
+
+genGenerateBtn.addEventListener('click', async () => {
+  const text = genPromptEl.value.trim();
+  if (!text) {
+    showToast('Enter a prompt first', 'error');
+    return;
+  }
+  genGridEl.innerHTML = '';
+  genLogEl.innerHTML = '';
+  genSelectedKey = null;
+  genJob = null;
+  genPendingStage = null;
+  genSetRunning(true);
+
+  const args = [text, '-n', genCountEl.value];
+  const backends = selectedGenBackends();
+  if (backends.length) args.push('--backends', backends.join(','));
+
+  const result = await window.api.startPipeline({ action: 'images', args });
+  if (result && result.error) {
+    genSetRunning(false);
+    showToast(`Generate failed: ${result.error}`, 'error');
+  }
+});
+
+genMake3dBtn.addEventListener('click', async () => {
+  if (!genSelectedKey || genRunning) return;
+  const [, index] = genSelectedKey.split(':');
+  genPendingStage = 'mesh';
+  genSetRunning(true);
+  const result = await window.api.startPipeline({
+    action: 'mesh',
+    args: ['--pick', index],
+    job: genJob,
+  });
+  if (result && result.error) {
+    genPendingStage = null;
+    genSetRunning(false);
+    showToast(`Mesh failed: ${result.error}`, 'error');
+  }
+});
+
+genCancelBtn.addEventListener('click', () => {
+  window.api.cancelPipeline();
+});
+
+window.api.onPipelineEvent((evt) => {
+  if (!evt || typeof evt !== 'object') return;
+  if (evt.job) genJob = evt.job;
+
+  switch (evt.event) {
+    case 'start':
+      genLog(`${evt.stage}: starting…`);
+      break;
+    case 'progress':
+      genLog(`${evt.stage}: ${evt.message || ''}`.trim());
+      break;
+    case 'backend':
+      genLog(`${evt.stage}: backend ${evt.backend} ${evt.state}${evt.reason ? ' — ' + evt.reason : ''}`);
+      break;
+    case 'candidate':
+      addGenCandidate(evt);
+      break;
+    case 'score':
+      setGenScore(evt);
+      break;
+    case 'artifact':
+      genLog(`${evt.stage}: artifact (${evt.kind}) ${evt.path}`);
+      break;
+    case 'done':
+      genLog(`${evt.stage}: done`);
+      break;
+    case 'error':
+      genLog(`${evt.stage}: ${evt.message}`, true);
+      showToast(`Generate ${evt.stage} failed: ${evt.message}`, 'error');
+      genPendingStage = null;
+      break;
+  }
+});
+
+window.api.onPipelineLog((text) => {
+  String(text).split('\n').filter(Boolean).forEach((line) => genLog(line));
+});
+
+window.api.onPipelineExit(({ action, code }) => {
+  genSetRunning(false);
+
+  if (action === 'mesh' && genPendingStage === 'mesh' && code === 0) {
+    genPendingStage = 'prep';
+    genSetRunning(true);
+    window.api.startPipeline({ action: 'prep', args: [], job: genJob });
+  } else if (action === 'prep' && genPendingStage === 'prep' && code === 0) {
+    genPendingStage = 'checkpoint';
+    genSetRunning(true);
+    window.api.startPipeline({ action: 'checkpoint', args: [], job: genJob });
+  } else if (action === 'checkpoint' && genPendingStage === 'checkpoint') {
+    genPendingStage = null;
+    if (code === 0) showToast('3D model checkpointed', 'success');
+  } else {
+    genPendingStage = null;
+  }
+});
+
+refreshGenPipeline();
+
 // ── Session Browser ─────────────────────────────────────────────────────
 
 const sessionBtn = document.getElementById('session-btn');
@@ -1465,6 +1688,11 @@ function prettyPath(p) {
   }
   return p;
 }
+
+window.api.getAppVersion().then((v) => {
+  const versionEl = document.getElementById('app-version');
+  if (versionEl && v) versionEl.textContent = `v${v}`;
+});
 
 window.api.getWorkspace().then((ws) => {
   // Detect home dir from the workspace path

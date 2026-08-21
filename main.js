@@ -6,6 +6,10 @@ const pty = require('node-pty');
 const chokidar = require('chokidar');
 const { execFile, spawn } = require('child_process');
 
+// Single source of truth for the app version — surfaced over IPC as
+// app:get-version and sent in the MCP handshake, so neither can drift.
+const APP_VERSION = require('./package.json').version;
+
 // Resolve the OpenSCAD binary: prefer bundled copy, fall back to env / system.
 // In packaged builds, extraResources lands at process.resourcesPath.
 // In dev, look in the repo's vendors/ directory (populated by download-openscad.js).
@@ -65,6 +69,7 @@ function openscadEnv() {
   }
   return process.env;
 }
+
 const STATE_FILE = 'clawscad.json';
 const ACTIVE_FILE = 'active.scad';
 const MAX_WINDOWS = 4;
@@ -117,8 +122,7 @@ class McpClient {
       await this._send('initialize', {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        // Sourced from package.json so it can never drift from the app version.
-        clientInfo: { name: 'ClawSCAD', version: app.getVersion() },
+        clientInfo: { name: 'ClawSCAD', version: APP_VERSION },
       });
       this._notify('notifications/initialized');
       this.ready = true;
@@ -247,6 +251,9 @@ function openWindow(wsDir) {
     renderQueue: [],
     isRendering: false,
     renderFormat: '3mf',
+    pipelineChild: null,
+    pipelineJobDir: null,
+    pipelineJob: null,
   };
 
   const wcId = win.webContents.id;
@@ -283,6 +290,7 @@ function openWindow(wsDir) {
     if (ctx.fileWatcher) ctx.fileWatcher.close();
     if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
     if (ctx.ptyProcess2) try { ctx.ptyProcess2.kill(); } catch {}
+    if (ctx.pipelineChild) try { ctx.pipelineChild.kill(); } catch {}
     ctx.window = null; // Mark as destroyed so ctxSend won't touch it
     windows.delete(wcId);
     updateAllClaudeMd();
@@ -339,7 +347,18 @@ ClawSCAD automatically validates your .scad files when they are created. If a re
 - You will receive a message asking you to fix the issue
 - **Read RENDER_ERRORS.md**, understand the problem, and create a NEW fixed .scad file
 - Keep iterating until the render succeeds — don't present broken models to the user
-- Only stop when you have a clean render with no errors`;
+- Only stop when you have a clean render with no errors
+
+## Mesh-Derived Checkpoints
+Some checkpoints are generated from a 3D mesh rather than written by hand — the .scad file \`import()\`s a mesh file instead of describing geometry with primitives. Treat these as a **starting point to branch from, not a finished part**:
+- Never edit a mesh-derived .scad directly to add features. Branch into a NEW .scad that \`difference()\`s or \`union()\`s additional parametric geometry into the imported mesh (e.g. wrap the \`import()\` in \`difference() { import("meshes/x.stl"); translate([...]) cylinder(...); }\` to cut a hole).
+- Mesh-derived sculpts suit organic, decorative, or freeform shapes. For anything tolerance-critical (snap fits, threads, mating parts, load-bearing features), model it fully parametrically instead of relying on the imported mesh.
+- Keep the same checkpoint discipline: the imported mesh file is immutable too — never regenerate or overwrite it in place.`;
+
+// The app only ever owns the content between these markers — anything a
+// user writes before/after them in CLAUDE.md is never touched.
+const CLAUDE_MD_START = '<!-- clawscad:rules:start -->';
+const CLAUDE_MD_END = '<!-- clawscad:rules:end -->';
 
 function updateAllClaudeMd() {
   // Filter out destroyed windows
@@ -350,7 +369,7 @@ function updateAllClaudeMd() {
   }
 }
 
-function writeClaudeMd(ctx, allWorkspaces) {
+function buildClaudeMdBlock(ctx, allWorkspaces) {
   const others = allWorkspaces.filter((w) => w !== ctx.workspaceDir);
   let md = `# ClawSCAD Workspace — MANDATORY RULES\n\n${CLAUDE_MD_RULES}\n`;
 
@@ -369,7 +388,43 @@ function writeClaudeMd(ctx, allWorkspaces) {
     md += `You can read any file from these paths. If the user asks you to combine or reference designs from other projects, read the relevant .scad files directly.\n`;
   }
 
-  fs.writeFileSync(path.join(ctx.workspaceDir, 'CLAUDE.md'), md);
+  return md.replace(/\n+$/, '');
+}
+
+// Writes the app's generated rules into a delimited managed block inside
+// CLAUDE.md instead of overwriting the whole file, so any hand-written
+// content a user has in their workspace's CLAUDE.md survives every
+// window open/close. See CLAUDE_MD_START/END.
+function writeClaudeMd(ctx, allWorkspaces) {
+  const filePath = path.join(ctx.workspaceDir, 'CLAUDE.md');
+  const block = buildClaudeMdBlock(ctx, allWorkspaces);
+  const managed = `${CLAUDE_MD_START}\n${block}\n${CLAUDE_MD_END}`;
+
+  let existing = '';
+  try {
+    existing = fs.readFileSync(filePath, 'utf-8');
+  } catch {}
+
+  let output;
+  if (!existing) {
+    // No file yet — create it with just the managed block.
+    output = managed + '\n';
+  } else {
+    const startIdx = existing.indexOf(CLAUDE_MD_START);
+    const endIdx = existing.indexOf(CLAUDE_MD_END);
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      // Replace only the block's contents; everything before/after is
+      // preserved byte-for-byte.
+      output = existing.slice(0, startIdx) + managed + existing.slice(endIdx + CLAUDE_MD_END.length);
+    } else {
+      // Existing hand-written file with no markers — never clobber it.
+      // Prepend the managed block once; future runs will hit the marker
+      // path above and leave the user's content alone.
+      output = managed + '\n\n' + existing;
+    }
+  }
+
+  fs.writeFileSync(filePath, output);
 }
 
 function initWorkspace(ctx) {
@@ -706,36 +761,52 @@ function spawnPty2(ctx, cmd, args = []) {
   return proc;
 }
 
+// Fall back to a plain interactive shell. Returns null rather than throwing:
+// startTerminal() is called from openWindow(), and an uncaught spawn failure
+// here used to take the rest of that function down with it, silently skipping
+// startFileWatcher() and updateAllClaudeMd() for the whole window.
+function spawnFallbackShell(ctx) {
+  try { return spawnPty(ctx, DEFAULT_SHELL, []); } catch { return null; }
+}
+
+// Re-spawn a shell whenever the current pty exits, so closing Claude leaves a
+// usable terminal instead of a dead panel.
+function attachRespawn(ctx) {
+  if (!ctx.ptyProcess) return;
+  ctx.ptyProcess.onExit(() => {
+    ctx.ptyProcess = spawnFallbackShell(ctx);
+    if (ctx.ptyProcess) ctx.ptyProcess.onExit(() => {});
+  });
+}
+
 // Spawn a pty running the Claude Code CLI. If the binary can't be found (or
 // fails to launch), drop the user into a normal shell with a hint on how to
 // install it — we don't silently install global npm packages on their behalf.
+// resolveClaude() is what makes this work on Windows, where the CLI is
+// claude.exe / claude.cmd rather than a bare `claude` on PATH.
 function spawnClaude(ctx, args = []) {
   const bin = resolveClaude();
   if (bin) {
     try { return spawnPty(ctx, bin, args); } catch {}
   }
-  const proc = spawnPty(ctx, DEFAULT_SHELL, []);
-  ctxSend(ctx, 'terminal:data',
-    '\r\n\x1b[33mClaude Code CLI not found.\x1b[0m Install it from ' +
-    'https://docs.claude.com/en/docs/claude-code/setup then restart the terminal.\r\n\r\n');
+  const proc = spawnFallbackShell(ctx);
+  if (proc) {
+    ctxSend(ctx, 'terminal:data',
+      '\r\n\x1b[33mClaude Code CLI not found.\x1b[0m Install it from ' +
+      'https://docs.claude.com/en/docs/claude-code/setup then restart the terminal.\r\n\r\n');
+  }
   return proc;
 }
 
 function startTerminal(ctx) {
   ctx.ptyProcess = spawnClaude(ctx, []);
-  ctx.ptyProcess.onExit(() => {
-    ctx.ptyProcess = spawnPty(ctx, DEFAULT_SHELL, []);
-    ctx.ptyProcess.onExit(() => {});
-  });
+  attachRespawn(ctx);
 }
 
 function restartTerminal(ctx, args = []) {
   if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
   ctx.ptyProcess = spawnClaude(ctx, args);
-  ctx.ptyProcess.onExit(() => {
-    ctx.ptyProcess = spawnPty(ctx, DEFAULT_SHELL, []);
-    ctx.ptyProcess.onExit(() => {});
-  });
+  attachRespawn(ctx);
 }
 
 // ── File Watcher ────────────────────────────────────────────────────────
@@ -773,6 +844,132 @@ function handleFileEvent(ctx, filePath) {
       sendModel(ctx, filePath, 'stl');
     }
   }
+}
+
+// ── Generation Pipeline (claw-gen) ──────────────────────────────────────
+// Spawns the `claw-gen` CLI (docs: clawscad-gen CONTRACT.md) as a one-shot
+// child process per action — no daemon, no persistent port. The app knows
+// nothing about providers/backends; that all comes from `claw-gen backends
+// --json`. Resolution order: user setting -> PATH.
+
+const PIPELINE_ACTIONS = new Set(['images', 'mesh', 'prep', 'checkpoint']);
+const PIPELINE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+const PIPELINE_MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+
+function pipelineSettingsPath() {
+  return path.join(app.getPath('userData'), 'pipeline-settings.json');
+}
+
+function loadPipelineSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(pipelineSettingsPath(), 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function savePipelineSettings(settings) {
+  fs.writeFileSync(pipelineSettingsPath(), JSON.stringify(settings, null, 2));
+}
+
+function findOnPath(exeName) {
+  const dirs = (process.env.PATH || process.env.Path || '').split(path.delimiter).filter(Boolean);
+  const exts = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';')
+    : [''];
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      const candidate = path.join(dir, exeName + ext);
+      try {
+        if (fs.statSync(candidate).isFile()) return candidate;
+      } catch {}
+    }
+  }
+  return null;
+}
+
+function resolvePipelineCli() {
+  const settings = loadPipelineSettings();
+  if (settings.cliPath) {
+    try {
+      if (fs.statSync(settings.cliPath).isFile()) return settings.cliPath;
+    } catch {}
+  }
+  return findOnPath('claw-gen');
+}
+
+function pipelineCliStatus() {
+  const settings = loadPipelineSettings();
+  return { userSet: settings.cliPath || null, resolved: resolvePipelineCli() };
+}
+
+function pipelineErrorEvent(stage, code, message) {
+  return { v: 1, ts: new Date().toISOString(), stage, event: 'error', code, message, job: '' };
+}
+
+function startPipelineAction(ctx, { action, args = [], job } = {}) {
+  if (!ctx) return { error: 'no window' };
+  if (ctx.pipelineChild) return { error: 'already-running' };
+  if (!PIPELINE_ACTIONS.has(action)) return { error: 'bad-action' };
+
+  const cli = resolvePipelineCli();
+  if (!cli) {
+    ctxSend(ctx, 'pipeline:event', pipelineErrorEvent(action, 'not-configured', 'No generation pipeline configured'));
+    return { error: 'not-configured' };
+  }
+
+  const argv = [action, ...args.map(String), '--json-events'];
+  if (job) argv.push('--job', String(job));
+
+  let child;
+  try {
+    child = spawn(cli, argv, { cwd: ctx.workspaceDir, stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    ctxSend(ctx, 'pipeline:event', pipelineErrorEvent(action, 'spawn-failed', err.message));
+    return { error: err.message };
+  }
+
+  ctx.pipelineChild = child;
+  let stdoutBuf = '';
+
+  child.stdout.on('data', (chunk) => {
+    stdoutBuf += chunk.toString();
+    let nl;
+    while ((nl = stdoutBuf.indexOf('\n')) !== -1) {
+      const line = stdoutBuf.slice(0, nl).trim();
+      stdoutBuf = stdoutBuf.slice(nl + 1);
+      if (!line) continue;
+      let evt;
+      try {
+        evt = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (evt.job) ctx.pipelineJob = evt.job;
+      if (evt.event === 'candidate' && typeof evt.path === 'string') {
+        // job dir is two levels up from img/<file>
+        ctx.pipelineJobDir = path.dirname(path.dirname(evt.path));
+      }
+      ctxSend(ctx, 'pipeline:event', evt);
+    }
+  });
+
+  child.stderr.on('data', (chunk) => {
+    ctxSend(ctx, 'pipeline:log', chunk.toString());
+  });
+
+  child.on('error', (err) => {
+    ctx.pipelineChild = null;
+    ctxSend(ctx, 'pipeline:event', pipelineErrorEvent(action, 'spawn-failed', err.message));
+    ctxSend(ctx, 'pipeline:exit', { action, code: null });
+  });
+
+  child.on('exit', (code) => {
+    ctx.pipelineChild = null;
+    ctxSend(ctx, 'pipeline:exit', { action, code });
+  });
+
+  return { started: true };
 }
 
 // ── IPC Handlers ────────────────────────────────────────────────────────
@@ -900,6 +1097,83 @@ ipcMain.handle('checkpoint:delete', (event, id) => {
   if (ctx.state.active === id) ctx.state.active = parentId;
   saveState(ctx);
   sendCheckpoints(ctx);
+});
+
+// ── Generation Pipeline IPC ──────────────────────────────────────────────
+
+ipcMain.handle('pipeline:get-cli-path', () => pipelineCliStatus());
+
+ipcMain.handle('pipeline:set-cli-path', (event, cliPath) => {
+  const settings = loadPipelineSettings();
+  settings.cliPath = cliPath || null;
+  savePipelineSettings(settings);
+  return pipelineCliStatus();
+});
+
+ipcMain.handle('pipeline:backends', (event) => {
+  const ctx = getCtx(event);
+  const cli = resolvePipelineCli();
+  if (!cli) return Promise.resolve({ configured: false });
+  return new Promise((resolve) => {
+    execFile(
+      cli,
+      ['backends', '--json'],
+      { cwd: ctx ? ctx.workspaceDir : undefined, timeout: 15000 },
+      (err, stdout) => {
+        try {
+          const lines = (stdout || '').trim().split('\n').filter(Boolean);
+          const parsed = JSON.parse(lines[lines.length - 1]);
+          resolve(parsed);
+        } catch {
+          resolve({ configured: false });
+        }
+      }
+    );
+  });
+});
+
+ipcMain.handle('pipeline:start', (event, opts) => {
+  const ctx = getCtx(event);
+  return startPipelineAction(ctx, opts || {});
+});
+
+ipcMain.handle('pipeline:cancel', (event) => {
+  const ctx = getCtx(event);
+  if (ctx && ctx.pipelineChild) {
+    try {
+      ctx.pipelineChild.kill('SIGTERM');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+});
+
+ipcMain.handle('pipeline:read-image', (event, filePath) => {
+  const ctx = getCtx(event);
+  if (!ctx || !ctx.pipelineJobDir || typeof filePath !== 'string') return null;
+  try {
+    const resolved = path.resolve(filePath);
+    const jobDir = path.resolve(ctx.pipelineJobDir);
+    if (resolved !== jobDir && !resolved.startsWith(jobDir + path.sep)) return null;
+    const ext = path.extname(resolved).toLowerCase();
+    if (!PIPELINE_IMAGE_EXTS.has(ext)) return null;
+    const stat = fs.statSync(resolved);
+    if (!stat.isFile() || stat.size > PIPELINE_MAX_IMAGE_BYTES) return null;
+    const data = fs.readFileSync(resolved);
+    const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    return `data:${mime};base64,${data.toString('base64')}`;
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('app:get-version', () => APP_VERSION);
+
+ipcMain.handle('app:open-readme', () => {
+  const readmePath = path.join(__dirname, 'README.md');
+  if (fs.existsSync(readmePath)) shell.openPath(readmePath);
 });
 
 // ── MCP Direct Access ───────────────────────────────────────────────────

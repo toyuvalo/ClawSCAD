@@ -7,3 +7,7 @@ vendors/
 .DS_Store
 test-results/
 playwright-report/
+# app/test stdout+stderr captures — these got auto-committed once already
+*.log
+tests/fixtures/*.exe
+tests/fixtures/*.pdb

@@ -120,9 +120,10 @@ test.describe('ClawSCAD Menu', () => {
     const count = await items.count();
     expect(count).toBeGreaterThanOrEqual(10);
 
-    // Use actual data-action values from index.html
+    // Actual data-action values from index.html
     await expect(page.locator('[data-action="new-project"]')).toBeVisible();
     await expect(page.locator('[data-action="open-workspace"]')).toBeVisible();
+    await expect(page.locator('[data-action="split-viewport"]')).toBeVisible();
     await expect(page.locator('[data-action="screenshot"]')).toBeVisible();
     await expect(page.locator('[data-action="toggle-editor"]')).toBeVisible();
     await expect(page.locator('[data-action="devtools"]')).toBeVisible();
@@ -132,7 +133,9 @@ test.describe('ClawSCAD Menu', () => {
     await page.locator('#app-menu-btn').click();
     const menu = page.locator('#app-menu');
     await expect(menu).not.toHaveClass(/hidden/);
-    // Click the status bar — always below the open menu, never covered by it
+    // Click the status bar — always below the open menu, never covered by it.
+    // Don't use a fixed viewport point: the dropdown overlays the viewport's
+    // top-left, so a hardcoded (200,200) is intercepted by the menu itself.
     await page.locator('#status-bar').click();
     await expect(menu).toHaveClass(/hidden/);
   });
@@ -150,7 +153,9 @@ test.describe('ClawSCAD Menu', () => {
 
 test.describe('Viewport Toolbar', () => {
   test('toolbar buttons are injected into left/right containers', async () => {
-    // Buttons are dynamically added by renderer.js into #viewport-toolbar-left/right
+    // Buttons are dynamically added by renderer.js into #viewport-toolbar-left/right,
+    // and the containers only become visible once a model is loaded — assert
+    // attachment, not visibility.
     const left = page.locator('#viewport-toolbar-left');
     const right = page.locator('#viewport-toolbar-right');
     await expect(left).toBeAttached();
