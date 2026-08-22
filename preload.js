@@ -26,6 +26,22 @@ contextBridge.exposeInMainWorld('api', {
   // from render:error so an environment problem never enters the model-fix loop.
   onRenderEnvError: (cb) => ipcRenderer.on('render:env-error', (_, data) => cb(data)),
 
+  // Environment status (banner strip) and the two setup actions it offers
+  getEnvStatus: () => ipcRenderer.invoke('env:status'),
+  onEnvStatus: (cb) => ipcRenderer.on('env:status', (_, data) => cb(data)),
+  locateOpenSCAD: () => ipcRenderer.invoke('env:locate-openscad'),
+  openRenderErrors: () => ipcRenderer.invoke('app:open-render-errors'),
+
+  // Claude nudge — offered as a card, delivered only on request
+  onClaudeNudge: (cb) => ipcRenderer.on('claude:nudge', (_, data) => cb(data)),
+  sendClaudeNudge: (message) => ipcRenderer.invoke('claude:send-nudge', message),
+  onTerminalLabel: (cb) => ipcRenderer.on('terminal:label', (_, data) => cb(data)),
+  restartTerminal: () => ipcRenderer.invoke('terminal:restart'),
+
+  // Export progress
+  onExportStart: (cb) => ipcRenderer.on('export:start', (_, data) => cb(data)),
+  onExportDone: (cb) => ipcRenderer.on('export:done', (_, data) => cb(data)),
+
   // Sessions
   getSessions: () => ipcRenderer.invoke('sessions:list'),
   newSession: () => ipcRenderer.invoke('sessions:new'),
@@ -35,7 +51,7 @@ contextBridge.exposeInMainWorld('api', {
   // Checkpoints
   getCheckpoints: () => ipcRenderer.invoke('checkpoint:list'),
   selectCheckpoint: (id) => ipcRenderer.invoke('checkpoint:select', id),
-  deleteCheckpoint: (id) => ipcRenderer.invoke('checkpoint:delete', id),
+  deleteCheckpoint: (id, opts) => ipcRenderer.invoke('checkpoint:delete', id, opts || {}),
   renameCheckpoint: (id, label) => ipcRenderer.invoke('checkpoint:rename', id, label),
   restoreCheckpointSession: (id) => ipcRenderer.invoke('checkpoint:restore-session', id),
   onCheckpointUpdate: (cb) => ipcRenderer.on('checkpoint:update', (_, data) => cb(data)),
@@ -79,6 +95,7 @@ contextBridge.exposeInMainWorld('api', {
   // Generation pipeline (claw-gen)
   getPipelineCliPath: () => ipcRenderer.invoke('pipeline:get-cli-path'),
   setPipelineCliPath: (cliPath) => ipcRenderer.invoke('pipeline:set-cli-path', cliPath),
+  locatePipelineCli: () => ipcRenderer.invoke('pipeline:locate-cli'),
   getPipelineBackends: () => ipcRenderer.invoke('pipeline:backends'),
   startPipeline: (opts) => ipcRenderer.invoke('pipeline:start', opts),
   cancelPipeline: () => ipcRenderer.invoke('pipeline:cancel'),

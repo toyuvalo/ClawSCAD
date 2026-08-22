@@ -95,8 +95,12 @@ test.describe('Window & Layout', () => {
   });
 
   test('workspace path is shown in header', async () => {
+    // prettyPath now middle-ellipsises a long path (the old regex only ever
+    // collapsed /home/x and /root, so every Windows path ate the header), so
+    // the full path lives in the title while the label stays identifying.
     const pathEl = page.locator('#workspace-path');
-    await expect(pathEl).toContainText(TEST_WORKSPACE);
+    await expect(pathEl).toContainText(path.basename(TEST_WORKSPACE));
+    await expect(pathEl).toHaveAttribute('title', TEST_WORKSPACE);
   });
 });
 

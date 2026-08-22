@@ -51,9 +51,44 @@ ClawSCAD wraps [OpenSCAD](https://openscad.org/) and [Claude Code](https://githu
 - Multi-window support (up to 4 projects)
 
 **Export**
-- STL, 3MF, and PNG export
-- 3MF preserves per-part colours
+- 3MF, STL, and PNG export — 3MF is the default because it is the only one that preserves per-part colour
+- `--backend=Manifold` is used automatically when the resolved OpenSCAD supports it (~50× on boolean-heavy models)
 - Print cost estimation (configurable infill, material, cost/kg)
+
+## Generation Pipeline (`claw-gen`)
+
+The **Generate** panel turns a sentence into a 3D sculpt: *text → candidate images → you pick one →
+mesh → print-prep → a normal `.scad` checkpoint that `import()`s the mesh*. It is an optional
+feature — ClawSCAD works fully without it, and the panel says so rather than failing quietly.
+
+It is driven entirely by an external CLI called `claw-gen`; the app hardcodes nothing about image or
+mesh providers. Backend names, availability, and reasons come only from `claw-gen backends --json`.
+
+**Setting it up**
+
+1. Install `claw-gen` (from the `clawscad-gen` project) and make sure `claw-gen backends --json`
+   runs in a terminal.
+2. In ClawSCAD, open the **Generate** panel and press **Locate claw-gen…** if it is not already on
+   your `PATH`. The path is remembered per user, not per workspace.
+3. Press **Try again** — the panel switches to the prompt box once a backend reports `ok`.
+
+**What the three unconfigured states mean**
+
+| The panel says | What is actually true | What to do |
+|---|---|---|
+| *No generation pipeline configured* | No `claw-gen` on `PATH` and none located | Install it, or press **Locate claw-gen…** |
+| *`claw-gen` failed to start* | It ran, but crashed or printed nothing parsable (its stderr is shown) | Fix the install or its `config.toml` |
+| *No image backend available right now* | It ran fine, but every image backend reports unavailable — often `busy` under local memory pressure | Wait, or select an API backend instead of the local one |
+
+**While a job runs** the panel auto-expands and shows a four-stage stepper (images → mesh → prep →
+checkpoint) with an elapsed timer; a failed stage stays visibly failed rather than silently
+clearing. A mesh job takes roughly ten minutes, so completion also raises an OS notification when
+the window is unfocused.
+
+**The result is a starting point, not a finished part.** A generated checkpoint is mesh-derived —
+it is badged `GEN` in the checkpoint tree with a diamond node. Branch it and `difference()` your
+parametric features into the import; never edit it in place. Anything tolerance-critical (snap
+fits, threads, mating parts) should be modelled parametrically from the start.
 
 ## Install
 
@@ -71,12 +106,12 @@ npm start
 
 ## Usage
 
-1. Launch ClawSCAD — workspace created at `~/clawscad-workspace/`
+1. Launch ClawSCAD — workspace created at `E:\clawscad-workspace\` on Windows, `~/clawscad-workspace/` elsewhere
 2. Claude Code starts in the terminal panel
 3. Describe what you want: *"Make a gear with 20 teeth and a 5mm shaft hole"*
 4. Claude writes a `.scad` file — ClawSCAD auto-renders it in the viewport
 5. If the render fails, ClawSCAD tells Claude to fix it automatically
-6. Click any checkpoint in the History panel to go back and branch
+6. Click any checkpoint in the Checkpoints panel to go back and branch — the strip above the tree always names the checkpoint your next change will branch from
 7. Export to STL/3MF when done
 
 ## Keyboard Shortcuts

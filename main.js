@@ -28,6 +28,58 @@ function resolveOpenSCAD() {
 }
 const OPENSCAD_BIN = resolveOpenSCAD();
 
+// Is the resolved binary the BUNDLED one, or a fallback? An environment banner
+// that only says "install OpenSCAD" is wrong in a dev checkout, where the
+// bundled path exists as a code branch but the binary is simply un-downloaded:
+// there the fix is `npm run download-openscad`, not an install.
+function openscadBundledPath() {
+  const base = app.isPackaged ? process.resourcesPath : path.join(__dirname, 'vendors');
+  const candidates = {
+    linux: path.join(base, 'openscad-linux.AppImage'),
+    darwin: path.join(base, 'OpenSCAD.app', 'Contents', 'MacOS', 'OpenSCAD'),
+    win32: path.join(base, 'openscad-win', 'openscad.exe'),
+  };
+  return candidates[process.platform] || null;
+}
+
+// --backend=Manifold is ~50x faster than 2021.01's CGAL on boolean-heavy
+// exports, but it only exists on recent/Nightly builds — passing it to an old
+// binary is a hard argument error, so probe once and cache.
+let _manifoldSupported = null;
+function probeManifold() {
+  if (_manifoldSupported !== null) return Promise.resolve(_manifoldSupported);
+  return new Promise((resolve) => {
+    execFile(OPENSCAD_BIN, ['--help'], { timeout: 10000, env: openscadEnv() }, (err, stdout, stderr) => {
+      const text = `${stdout || ''}${stderr || ''}`;
+      _manifoldSupported = !err && /manifold/i.test(text);
+      resolve(_manifoldSupported);
+    });
+  });
+}
+
+function manifoldArgs() {
+  return _manifoldSupported ? ['--backend=Manifold'] : [];
+}
+
+// What the app can and cannot do right now, as facts rather than as a failure
+// discovered mid-render. Consumed by the environment banner strip.
+function probeEnvironment() {
+  const bundled = openscadBundledPath();
+  const openscad = {
+    binary: OPENSCAD_BIN,
+    bundledPath: bundled,
+    bundledMissing: !!bundled && !fs.existsSync(bundled),
+    resolved: !!bundled && fs.existsSync(bundled)
+      ? true
+      : !!(process.env.OPENSCAD_BINARY && fs.existsSync(process.env.OPENSCAD_BINARY)) || !!findOnPath('openscad'),
+  };
+  return {
+    openscad,
+    claude: { binary: resolveClaude() },
+    clawGen: { binary: resolvePipelineCli() },
+  };
+}
+
 // Resolve the Claude Code CLI binary. Checks the standalone installer location
 // (~/.claude/local/claude), user/system PATH, and other common install paths.
 // Returns null if not found — startTerminal will auto-install via npm in that case.
@@ -229,10 +281,21 @@ function getCtx(event) {
 
 // ── Open / Close Windows ────────────────────────────────────────────────
 
+// A fresh install must not put a project directory on C:. On Windows the work
+// drive is E: (drive-usage policy: C: is OS only); everywhere else ~ is right.
+function defaultWorkspaceDir() {
+  if (process.platform === 'win32') {
+    for (const drive of ['E:\\', 'D:\\']) {
+      try { if (fs.existsSync(drive)) return path.join(drive, 'clawscad-workspace'); } catch {}
+    }
+  }
+  return path.join(os.homedir(), 'clawscad-workspace');
+}
+
 function openWindow(wsDir) {
   if (windows.size >= MAX_WINDOWS) return null;
 
-  wsDir = wsDir || path.join(os.homedir(), 'clawscad-workspace');
+  wsDir = wsDir || defaultWorkspaceDir();
 
   const win = new BrowserWindow({
     width: 1600,
@@ -277,6 +340,8 @@ function openWindow(wsDir) {
 
   win.webContents.once('did-finish-load', () => {
     sendCheckpoints(ctx);
+    ctxSend(ctx, 'env:status', probeEnvironment());
+    ctxSend(ctx, 'terminal:label', { kind: ctx.terminalKind || 'shell', binary: ctx.terminalBinary || null });
     if (ctx.state.active && ctx.state.checkpoints[ctx.state.active]) {
       const cp = ctx.state.checkpoints[ctx.state.active];
       sendFileContent(ctx, cp.file);
@@ -694,7 +759,11 @@ function processRenderQueue(ctx) {
 
   ctxSend(ctx, 'render:start', { file: path.basename(scadPath) });
 
-  execFile(OPENSCAD_BIN, ['-o', outputPath, scadPath], { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
+  // Manifold where the binary has it: ~50x on boolean-heavy models. Omitted
+  // silently on older binaries, where the flag is a hard argument error.
+  const renderArgs = [...manifoldArgs(), '-o', outputPath, scadPath];
+
+  execFile(OPENSCAD_BIN, renderArgs, { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
     ctx.isRendering = false;
     const fault = classifyRenderFailure(err, outputPath);
 
@@ -788,17 +857,15 @@ function writeRenderErrors(ctx, filename, errorText, errors) {
       `## Raw Output\n\`\`\`\n${errorText.substring(0, 2000)}\n\`\`\`\n`
   );
 
-  // Send a nudge to Claude's terminal — a visible prompt that there are errors to fix
-  if (ctx.ptyProcess) {
-    // Only nudge if Claude seems idle (don't interrupt mid-generation)
-    // Write to pty so it appears in the conversation as user input
-    const nudge =
-      `The render of ${filename} failed. Read RENDER_ERRORS.md for details and create a fixed version.\n`;
-    // Small delay to avoid interrupting Claude mid-output
-    setTimeout(() => {
-      if (ctx.ptyProcess) ctx.ptyProcess.write(nudge);
-    }, 2000);
-  }
+  // Offer the nudge; don't type it. The old code wrote this sentence straight
+  // into the pty 2s after a failure, with a comment claiming it only fired when
+  // Claude was idle — there was no idle check, so it could splice into a
+  // half-typed line and mangle whatever the user was writing.
+  ctxSend(ctx, 'claude:nudge', {
+    file: filename,
+    message:
+      `The render of ${filename} failed. Read RENDER_ERRORS.md for details and create a fixed version.`,
+  });
 }
 
 function clearRenderErrors(ctx) {
@@ -916,6 +983,7 @@ function attachRespawn(ctx) {
   if (!ctx.ptyProcess) return;
   ctx.ptyProcess.onExit(() => {
     ctx.ptyProcess = spawnFallbackShell(ctx);
+    setTerminalKind(ctx, ctx.ptyProcess ? 'shell' : 'dead', ctx.ptyProcess ? DEFAULT_SHELL : null);
     if (ctx.ptyProcess) ctx.ptyProcess.onExit(() => {});
   });
 }
@@ -928,15 +996,28 @@ function attachRespawn(ctx) {
 function spawnClaude(ctx, args = []) {
   const bin = resolveClaude();
   if (bin) {
-    try { return spawnPty(ctx, bin, args); } catch {}
+    try {
+      const proc = spawnPty(ctx, bin, args);
+      setTerminalKind(ctx, 'claude', bin);
+      return proc;
+    } catch {}
   }
   const proc = spawnFallbackShell(ctx);
+  // The pane used to be labelled "Claude Code" over a cmd.exe. Say what actually
+  // spawned — and offer the way back rather than only an install URL.
+  setTerminalKind(ctx, proc ? 'shell' : 'dead', proc ? DEFAULT_SHELL : null);
   if (proc) {
     ctxSend(ctx, 'terminal:data',
       '\r\n\x1b[33mClaude Code CLI not found.\x1b[0m Install it from ' +
-      'https://docs.claude.com/en/docs/claude-code/setup then restart the terminal.\r\n\r\n');
+      'https://docs.claude.com/en/docs/claude-code/setup then use Restart Claude.\r\n\r\n');
   }
   return proc;
+}
+
+function setTerminalKind(ctx, kind, binary) {
+  ctx.terminalKind = kind;
+  ctx.terminalBinary = binary;
+  ctxSend(ctx, 'terminal:label', { kind, binary });
 }
 
 function startTerminal(ctx) {
@@ -1275,17 +1356,31 @@ ipcMain.handle('checkpoint:rename', (event, id, label) => {
   }
 });
 
-ipcMain.handle('checkpoint:delete', (event, id) => {
+// "Delete" only ever removed the registry record — the .scad stayed on disk,
+// and since reconcileWorkspace() landed it now comes BACK on the next open.
+// deleteFile is the opt-in that makes the word true.
+ipcMain.handle('checkpoint:delete', (event, id, opts = {}) => {
   const ctx = getCtx(event);
-  if (!ctx || !ctx.state.checkpoints[id]) return;
-  const parentId = ctx.state.checkpoints[id].parent;
+  if (!ctx || !ctx.state.checkpoints[id]) return { ok: false };
+  const record = ctx.state.checkpoints[id];
+  const parentId = record.parent;
   for (const [, cp] of Object.entries(ctx.state.checkpoints)) {
     if (cp.parent === id) cp.parent = parentId;
   }
   delete ctx.state.checkpoints[id];
   if (ctx.state.active === id) ctx.state.active = parentId;
   saveState(ctx);
+
+  let fileDeleted = false;
+  if (opts && opts.deleteFile && record.file && record.file !== ACTIVE_FILE) {
+    try {
+      fs.unlinkSync(path.join(ctx.workspaceDir, record.file));
+      fileDeleted = true;
+    } catch {}
+  }
+
   sendCheckpoints(ctx);
+  return { ok: true, fileDeleted };
 });
 
 // ── Generation Pipeline IPC ──────────────────────────────────────────────
@@ -1299,26 +1394,64 @@ ipcMain.handle('pipeline:set-cli-path', (event, cliPath) => {
   return pipelineCliStatus();
 });
 
+// Three very different situations used to collapse into {configured:false}:
+// no install, a CLI that crashed, and a CLI that ran fine but has no usable
+// backend right now (the pipeline deliberately reports `busy` under memory
+// pressure — "busy, try the API backend" is USEFUL, and it was unreachable).
 ipcMain.handle('pipeline:backends', (event) => {
   const ctx = getCtx(event);
   const cli = resolvePipelineCli();
-  if (!cli) return Promise.resolve({ configured: false });
+  if (!cli) return Promise.resolve({ configured: false, state: 'not-found' });
   return new Promise((resolve) => {
     execFile(
       cli,
       ['backends', '--json'],
       { cwd: ctx ? ctx.workspaceDir : undefined, timeout: 15000 },
-      (err, stdout) => {
+      (err, stdout, stderr) => {
+        let parsed = null;
         try {
           const lines = (stdout || '').trim().split('\n').filter(Boolean);
-          const parsed = JSON.parse(lines[lines.length - 1]);
-          resolve(parsed);
-        } catch {
-          resolve({ configured: false });
+          parsed = JSON.parse(lines[lines.length - 1]);
+        } catch {}
+        if (!parsed) {
+          resolve({
+            configured: false,
+            state: 'cli-error',
+            cli,
+            detail: (stderr || (err && err.message) || 'claw-gen produced no parsable output').trim(),
+          });
+          return;
         }
+        parsed.cli = cli;
+        if (parsed.configured) {
+          const images = (parsed.backends || []).filter((b) => !b.kind || b.kind === 'image');
+          parsed.state = images.some((b) => b.ok) ? 'ready' : 'no-backend';
+        } else {
+          parsed.state = parsed.state || 'not-configured';
+        }
+        resolve(parsed);
       }
     );
   });
+});
+
+// The locate flow existed over IPC but no element ever called it — the feature
+// was unreachable from the UI, and its README link pointed at a README with no
+// pipeline section at all.
+ipcMain.handle('pipeline:locate-cli', async (event) => {
+  const ctx = getCtx(event);
+  const res = await dialog.showOpenDialog(ctx ? ctx.window : null, {
+    title: 'Locate the claw-gen CLI',
+    properties: ['openFile'],
+    filters: process.platform === 'win32'
+      ? [{ name: 'Executables', extensions: ['exe', 'cmd', 'bat'] }, { name: 'All files', extensions: ['*'] }]
+      : [{ name: 'All files', extensions: ['*'] }],
+  });
+  if (res.canceled || !res.filePaths[0]) return { canceled: true, ...pipelineCliStatus() };
+  const settings = loadPipelineSettings();
+  settings.cliPath = res.filePaths[0];
+  savePipelineSettings(settings);
+  return pipelineCliStatus();
 });
 
 ipcMain.handle('pipeline:start', (event, opts) => {
@@ -1359,6 +1492,49 @@ ipcMain.handle('pipeline:read-image', (event, filePath) => {
 });
 
 ipcMain.handle('app:get-version', () => APP_VERSION);
+
+// ── Environment / terminal / nudge IPC ───────────────────────────────────
+
+ipcMain.handle('env:status', (event) => probeEnvironment());
+
+ipcMain.handle('env:locate-openscad', async (event) => {
+  const ctx = getCtx(event);
+  const res = await dialog.showOpenDialog(ctx ? ctx.window : null, {
+    title: 'Locate the OpenSCAD binary',
+    properties: ['openFile'],
+  });
+  if (res.canceled || !res.filePaths[0]) return { canceled: true };
+  // OPENSCAD_BIN is resolved once at startup, so this takes effect for every
+  // child spawned from here on without needing a restart.
+  process.env.OPENSCAD_BINARY = res.filePaths[0];
+  _manifoldSupported = null;
+  await probeManifold();
+  return { binary: res.filePaths[0], note: 'set for this session — export OPENSCAD_BINARY to make it permanent' };
+});
+
+// The nudge is delivered only when the user presses the button.
+ipcMain.handle('claude:send-nudge', (event, message) => {
+  const ctx = getCtx(event);
+  if (!ctx || !ctx.ptyProcess || typeof message !== 'string') return false;
+  ctx.ptyProcess.write(message.replace(/\r?\n/g, ' ') + '\r');
+  return true;
+});
+
+ipcMain.handle('terminal:restart', (event) => {
+  const ctx = getCtx(event);
+  if (!ctx) return { kind: 'dead' };
+  restartTerminal(ctx, []);
+  return { kind: ctx.terminalKind, binary: ctx.terminalBinary };
+});
+
+ipcMain.handle('app:open-render-errors', (event) => {
+  const ctx = getCtx(event);
+  if (!ctx) return false;
+  const errFile = path.join(ctx.workspaceDir, 'RENDER_ERRORS.md');
+  if (!fs.existsSync(errFile)) return false;
+  shell.openPath(errFile);
+  return true;
+});
 
 ipcMain.handle('app:open-readme', () => {
   const readmePath = path.join(__dirname, 'README.md');
@@ -1461,11 +1637,15 @@ ipcMain.handle('app:get-print-settings-path', (event) => {
 
 ipcMain.handle('app:export', async (event, format) => {
   const ctx = getCtx(event);
-  if (!ctx) return null;
+  if (!ctx) return { error: 'No window' };
+  // Returning bare null here made the button silently do nothing, forever, with
+  // no way to find out why. Say which of the three reasons it was.
   const cp = ctx.state.active && ctx.state.checkpoints[ctx.state.active];
-  if (!cp) return null;
+  if (!cp) return { error: 'Nothing to export — select a checkpoint first.' };
   const scadPath = path.join(ctx.workspaceDir, cp.file);
-  if (!fs.existsSync(scadPath)) return null;
+  if (!fs.existsSync(scadPath)) {
+    return { error: `${cp.file} is no longer on disk.` };
+  }
 
   const filters = {
     stl: [{ name: 'STL', extensions: ['stl'] }],
@@ -1480,19 +1660,23 @@ ipcMain.handle('app:export', async (event, format) => {
     defaultPath: path.join(ctx.workspaceDir, defaultName),
     filters: filters[format] || filters.stl,
   });
-  if (result.canceled) return null;
+  if (result.canceled) return { canceled: true };
 
   const args = format === 'png'
-    ? ['--imgsize=1920,1080', '-o', result.filePath, scadPath]
-    : ['-o', result.filePath, scadPath];
+    ? [...manifoldArgs(), '--imgsize=1920,1080', '-o', result.filePath, scadPath]
+    : [...manifoldArgs(), '-o', result.filePath, scadPath];
+
+  // OpenSCAD can run for minutes here. The only feedback used to be a toast
+  // that expired after 4s, so a long export looked like nothing happening.
+  ctxSend(ctx, 'export:start', { format, file: cp.file, target: result.filePath });
 
   return new Promise((resolve) => {
-    execFile(OPENSCAD_BIN, args, { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
-      if (err) {
-        resolve({ error: stderr || err.message });
-      } else {
-        resolve({ path: result.filePath });
-      }
+    execFile(OPENSCAD_BIN, args, { timeout: 300000, env: openscadEnv() }, (err, stdout, stderr) => {
+      const payload = err
+        ? { error: stderr || err.message, fault: classifyRenderFailure(err, result.filePath) }
+        : { path: result.filePath };
+      ctxSend(ctx, 'export:done', { format, ...payload });
+      resolve(payload);
     });
   });
 });
@@ -1585,9 +1769,11 @@ ipcMain.handle('app:window-count', () => windows.size);
 app.whenReady().then(async () => {
   // Start the MCP server early so it's warm by the time we need it
   mcpClient.start().catch(() => {});
+  // Probe once, before any render can need the answer.
+  probeManifold().catch(() => {});
 
   const cliArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
-  const wsDir = cliArg ? path.resolve(cliArg) : path.join(os.homedir(), 'clawscad-workspace');
+  const wsDir = cliArg ? path.resolve(cliArg) : defaultWorkspaceDir();
   openWindow(wsDir);
 });
 
