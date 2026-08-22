@@ -6,6 +6,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
+// bus.js has no side effects at import time (plain object + function decls) —
+// safe to import here despite ESM import hoisting. See renderer/bus.js.
+import { ctx, notifyCheckpointsChanged } from './renderer/bus.js';
 
 // ── Toast System ────────────────────────────────────────────────────────
 
@@ -1864,6 +1867,11 @@ window.api.onCheckpointUpdate((state) => {
       hideRenderOverlay();
     }
   }
+
+  // Fan out to feature modules. window.api.onCheckpointUpdate has no
+  // unsubscribe, so THIS is the only registration for this channel — every
+  // other module subscribes via ctx.onCheckpointsChanged (renderer/bus.js).
+  notifyCheckpointsChanged(state);
 });
 
 window.api.getCheckpoints().then((state) => {
@@ -2373,6 +2381,9 @@ function updateStatus(msg) {
 // The old regex only ever collapsed /home/x and /root, so every Windows path
 // ("C:\Users\toyuv\...") stayed full-length and ate the header.
 let homeDirPrefix = '';
+// Populated once window.api.getWorkspace() resolves, below; also mirrored
+// onto ctx.workspaceDir (renderer/bus.js) for feature modules.
+let workspaceDir = '';
 function prettyPath(p) {
   if (!p) return '';
   let out = p;
@@ -2401,6 +2412,8 @@ window.api.getWorkspace().then((ws) => {
     pathEl.textContent = prettyPath(ws);
     pathEl.title = ws;
   }
+  workspaceDir = ws;
+  ctx.workspaceDir = ws; // ctx is populated synchronously below; this resolves later, so mirror it in place
 });
 
 // ── App Menu ────────────────────────────────────────────────────────────
@@ -3421,11 +3434,43 @@ function animate() {
   activeControls.update();
   renderer3d.render(scene, activeCamera);
 
-  // Second viewport (shares the same scene, independent camera)
+  // Second viewport — its own scene (v2.scene, built in addSecondViewport())
+  // and its own camera/controls (v2.camera/v2.controls). It must never
+  // render the primary `scene` with the primary `activeCamera` — that's what
+  // made opening a second viewport throw every frame (arch-map landmine 10).
   if (viewport2) {
-    viewport2.activeCtrl.update();
-    viewport2.renderer.render(scene, viewport2.activeCam);
+    viewport2.controls.update();
+    viewport2.renderer.render(viewport2.scene, viewport2.camera);
   }
 }
 
 animate();
+
+// ── clawscad:anchor:modules ──────────────────────────────────────────────
+// Feature modules mount here. Each owns its own file under renderer/;
+// nothing below this line reads renderer.js internals except through the
+// `ctx` object exported by renderer/bus.js, populated just above the mount
+// calls. Every mountX(ctx) must guard `if (!el) return;` for any DOM it
+// expects (arch-map landmine 12 — everything above runs at import time and
+// assumes its own DOM already exists; feature modules get no such guarantee
+// for containers other packages haven't built yet).
+ctx.api = window.api;
+ctx.showToast = showToast;
+ctx.setExpanded = setExpanded;
+ctx.updateStatus = updateStatus;
+ctx.prettyPath = prettyPath;
+ctx.workspaceDir = workspaceDir; // may still be '' here — window.api.getWorkspace() is async and mirrors into ctx.workspaceDir once it resolves
+ctx.els = {
+  composer: document.getElementById('composer'),
+  gallerySheet: document.getElementById('gallery-sheet'),
+  viewportsContainer: document.getElementById('viewports-container'),
+  rightPanel: document.getElementById('right-panel'),
+  mainContent: document.getElementById('main-content'),
+};
+
+import { mountComposer } from './renderer/composer.js';
+import { mountUploads } from './renderer/uploads.js';
+import { mountPresets } from './renderer/presets-ui.js';
+import { mountGallery } from './renderer/gallery.js';
+import { mountOnboarding } from './renderer/onboarding.js';
+mountComposer(ctx); mountUploads(ctx); mountPresets(ctx); mountGallery(ctx); mountOnboarding(ctx);

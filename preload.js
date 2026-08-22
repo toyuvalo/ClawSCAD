@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   // Terminal (primary)
@@ -103,4 +103,31 @@ contextBridge.exposeInMainWorld('api', {
   onPipelineEvent: (cb) => ipcRenderer.on('pipeline:event', (_, data) => cb(data)),
   onPipelineLog: (cb) => ipcRenderer.on('pipeline:log', (_, data) => cb(data)),
   onPipelineExit: (cb) => ipcRenderer.on('pipeline:exit', (_, data) => cb(data)),
+
+  // clawscad:anchor:preload:composer — P1. Handlers land in main/composer.js;
+  // until then these reject with "no handler registered", which is fine
+  // because nothing calls them yet.
+  composerSendToClaude: (payload) => ipcRenderer.invoke('composer:send-to-claude', payload),
+  composerGetState: () => ipcRenderer.invoke('composer:get-state'),
+  composerSetState: (state) => ipcRenderer.invoke('composer:set-state', state),
+
+  // clawscad:anchor:preload:uploads — P2. Handlers land in main/uploads.js.
+  // Electron 43 removed File.path, and webUtils is reachable only from preload.
+  // Returns a real filesystem path for a dropped File, or null for a virtual
+  // one (a browser/Outlook drag has no path). Path-based ingest is preferred:
+  // it skips file.arrayBuffer(), so a 200 MB mesh is never buffered into
+  // renderer memory just to be copied. Callers fall back to bytes on null.
+  pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return null; } },
+  uploadPick: () => ipcRenderer.invoke('upload:pick'),
+  uploadIngest: (filePath) => ipcRenderer.invoke('upload:ingest', filePath),
+  uploadIngestBytes: (name, bytes) => ipcRenderer.invoke('upload:ingest-bytes', name, bytes),
+  uploadList: () => ipcRenderer.invoke('upload:list'),
+
+  // clawscad:anchor:preload:presets — P3. Handlers land in main/presets.js.
+  presetsLoad: () => ipcRenderer.invoke('presets:load'),
+
+  // clawscad:anchor:preload:gallery — P4. Handlers land in main/gallery.js.
+  galleryList: () => ipcRenderer.invoke('gallery:list'),
+  galleryListJobs: () => ipcRenderer.invoke('gallery:list-jobs'),
+  galleryOpenCheckpoint: (payload) => ipcRenderer.invoke('gallery:open-checkpoint', payload),
 });

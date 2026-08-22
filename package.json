@@ -1,6 +1,6 @@
 {
   "name": "clawscad",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "AI-powered 3D CAD — OpenSCAD + Claude Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "download-openscad": "node scripts/download-openscad.js",
     "start": "npm run build:renderer && electron . --no-sandbox",
     "dev": "npm run build:renderer && electron . --dev --no-sandbox",
-    "test:harness": "node tests/error-handler-survival.js && node tests/render-fault-classify.js",
+    "test:harness": "node tests/error-handler-survival.js && node tests/render-fault-classify.js && node tests/preset-merge.js",
     "test": "npm run build:renderer && npm run test:harness && npx playwright test",
     "test:headed": "npm run build:renderer && npx playwright test --headed",
     "pack": "npm run download-openscad && npm run build:renderer && electron-builder --dir",
@@ -76,8 +76,15 @@
       "preload.js",
       "index.html",
       "style.css",
+      "style-composer.css",
+      "style-uploads.css",
+      "style-presets.css",
+      "style-gallery.css",
+      "style-onboarding.css",
       "icon.png",
       "dist/**/*",
+      "main/**/*",
+      "presets/**/*",
       "node_modules/**/*",
       "!node_modules/.cache"
     ],
@@ -99,7 +106,10 @@
       "icon": "icon.png",
       "category": "Graphics",
       "extraResources": [
-        { "from": "vendors/openscad-linux.AppImage", "to": "openscad-linux.AppImage" }
+        {
+          "from": "vendors/openscad-linux.AppImage",
+          "to": "openscad-linux.AppImage"
+        }
       ]
     },
     "win": {
@@ -113,7 +123,10 @@
       ],
       "icon": "icon.png",
       "extraResources": [
-        { "from": "vendors/openscad-win", "to": "openscad-win" }
+        {
+          "from": "vendors/openscad-win",
+          "to": "openscad-win"
+        }
       ]
     },
     "nsis": {
@@ -132,7 +145,10 @@
       "icon": "icon.png",
       "category": "public.app-category.graphics-design",
       "extraResources": [
-        { "from": "vendors/OpenSCAD.app", "to": "OpenSCAD.app" }
+        {
+          "from": "vendors/OpenSCAD.app",
+          "to": "OpenSCAD.app"
+        }
       ]
     },
     "dmg": {

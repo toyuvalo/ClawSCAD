@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="./node_modules/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="./dist/renderer.css">
   <link rel="stylesheet" href="./style.css">
+  <!-- clawscad:anchor:stylesheets — one file per feature package (P1-P4);
+       nobody edits style.css for their own work, see arch-map §4.1. -->
+  <link rel="stylesheet" href="./style-composer.css">
+  <link rel="stylesheet" href="./style-uploads.css">
+  <link rel="stylesheet" href="./style-presets.css">
+  <link rel="stylesheet" href="./style-gallery.css">
+  <!-- P5 (onboarding) also injects this link imperatively as a fallback; the id
+       matches the one its guard looks for, so the static tag wins and the
+       injection no-ops. Declared here so the packaged build ships it. -->
+  <link rel="stylesheet" href="./style-onboarding.css" id="style-onboarding-link">
 </head>
 <body>
   <div id="app">
@@ -255,6 +265,10 @@
 
       <!-- Right: Terminal(s) -->
       <div id="right-panel">
+        <!-- clawscad:anchor:composer — P1 mounts the composer shell here in
+             W1 (restructures the right rail around this container). Empty
+             and hidden until then so it has zero effect on layout/tests. -->
+        <div id="composer" hidden></div>
         <div class="terminal-pane" id="terminal-pane-0">
           <div class="terminal-pane-header panel-header">
             <span class="label" id="terminal-label">Claude Code</span>
@@ -286,6 +300,10 @@
       </div>
     </div>
   </div>
+
+  <!-- clawscad:anchor:gallery-sheet — P4 mounts the gallery modal here.
+       Empty and hidden until then so it has zero effect on layout/tests. -->
+  <div id="gallery-sheet" hidden></div>
 
   <!-- Toast notifications -->
   <div id="toast-container" role="status" aria-live="polite"></div>

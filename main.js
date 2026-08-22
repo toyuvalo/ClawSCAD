@@ -13,20 +13,15 @@ const APP_VERSION = require('./package.json').version;
 // Resolve the OpenSCAD binary: prefer bundled copy, fall back to env / system.
 // In packaged builds, extraResources lands at process.resourcesPath.
 // In dev, look in the repo's vendors/ directory (populated by download-openscad.js).
-function resolveOpenSCAD() {
-  const base = app.isPackaged
-    ? process.resourcesPath
-    : path.join(__dirname, 'vendors');
-  const candidates = {
-    linux:  path.join(base, 'openscad-linux.AppImage'),
-    darwin: path.join(base, 'OpenSCAD.app', 'Contents', 'MacOS', 'OpenSCAD'),
-    win32:  path.join(base, 'openscad-win', 'openscad.exe'),
-  };
-  const bundled = candidates[process.platform];
+//
+// This MUST be a function, not a module-load constant: env:locate-openscad
+// mutates process.env.OPENSCAD_BINARY at runtime (below), and every call site
+// needs to see that change on its very next render, not after an app restart.
+function getOpenscadBin() {
+  const bundled = openscadBundledPath();
   if (bundled && fs.existsSync(bundled)) return bundled;
   return process.env.OPENSCAD_BINARY || 'openscad';
 }
-const OPENSCAD_BIN = resolveOpenSCAD();
 
 // Is the resolved binary the BUNDLED one, or a fallback? An environment banner
 // that only says "install OpenSCAD" is wrong in a dev checkout, where the
@@ -49,7 +44,7 @@ let _manifoldSupported = null;
 function probeManifold() {
   if (_manifoldSupported !== null) return Promise.resolve(_manifoldSupported);
   return new Promise((resolve) => {
-    execFile(OPENSCAD_BIN, ['--help'], { timeout: 10000, env: openscadEnv() }, (err, stdout, stderr) => {
+    execFile(getOpenscadBin(), ['--help'], { timeout: 10000, env: openscadEnv() }, (err, stdout, stderr) => {
       const text = `${stdout || ''}${stderr || ''}`;
       _manifoldSupported = !err && /manifold/i.test(text);
       resolve(_manifoldSupported);
@@ -66,7 +61,7 @@ function manifoldArgs() {
 function probeEnvironment() {
   const bundled = openscadBundledPath();
   const openscad = {
-    binary: OPENSCAD_BIN,
+    binary: getOpenscadBin(),
     bundledPath: bundled,
     bundledMissing: !!bundled && !fs.existsSync(bundled),
     resolved: !!bundled && fs.existsSync(bundled)
@@ -116,7 +111,7 @@ const DEFAULT_SHELL = process.platform === 'win32'
 // On Linux, APPIMAGE_EXTRACT_AND_RUN=1 lets a bundled AppImage run inside
 // the Electron AppImage without needing nested FUSE mounts.
 function openscadEnv() {
-  if (process.platform === 'linux' && OPENSCAD_BIN.endsWith('.AppImage')) {
+  if (process.platform === 'linux' && getOpenscadBin().endsWith('.AppImage')) {
     return { ...process.env, APPIMAGE_EXTRACT_AND_RUN: '1' };
   }
   return process.env;
@@ -517,7 +512,7 @@ function initWorkspace(ctx) {
     command: 'npx',
     args: ['-y', 'openscad-mcp-server'],
     // Point the MCP server at the same bundled binary ClawSCAD uses
-    env: { OPENSCAD_PATH: OPENSCAD_BIN },
+    env: { OPENSCAD_PATH: getOpenscadBin() },
   };
   fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
 }
@@ -652,8 +647,18 @@ function extractDescription(scadPath) {
   return '';
 }
 
+// Claude Code encodes a project's cwd into a directory name under
+// ~/.claude/projects/ by replacing every character outside [A-Za-z0-9] with
+// a literal '-', one-for-one — no stripping, no collapsing. Verified against
+// this machine's actual project directories: "E:\Claude" -> "E--Claude"
+// (colon and backslash each become one dash), "E:\$RECYCLE.BIN" ->
+// "E---RECYCLE-BIN" (colon, backslash, '$' and '.' each become one dash),
+// and this app's own workspace "E:\clawscad-workspace" -> the real on-disk
+// directory "E--clawscad-workspace". The previous implementation only
+// replaced '/', so on Windows paths (which use '\' and ':') it never matched
+// Claude Code's real directory naming and sessionId was always null.
 function getEncodedCwd(dir) {
-  return dir.replace(/\//g, '-').replace(/^-/, '');
+  return dir.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 function detectCurrentSessionId(ctx) {
@@ -763,7 +768,7 @@ function processRenderQueue(ctx) {
   // silently on older binaries, where the flag is a hard argument error.
   const renderArgs = [...manifoldArgs(), '-o', outputPath, scadPath];
 
-  execFile(OPENSCAD_BIN, renderArgs, { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
+  execFile(getOpenscadBin(), renderArgs, { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
     ctx.isRendering = false;
     const fault = classifyRenderFailure(err, outputPath);
 
@@ -774,7 +779,7 @@ function processRenderQueue(ctx) {
       ctx.stlFallbackFor = null;
       ctxSend(ctx, 'render:env-error', {
         file: path.basename(scadPath),
-        binary: OPENSCAD_BIN,
+        binary: getOpenscadBin(),
         code: (err && err.code) || 'UNKNOWN',
         error: (err && err.message) || 'OpenSCAD could not be started',
       });
@@ -1491,6 +1496,23 @@ ipcMain.handle('pipeline:read-image', (event, filePath) => {
   }
 });
 
+// ── Feature package registration ─────────────────────────────────────────
+// clawscad:anchor:modules — each later package (composer, uploads, gallery,
+// presets) registers its own IPC handlers here. Every module exports
+// register(ipcMain, deps); see main/registry.js for the deps shape. Nothing
+// above this block may be renamed or moved to satisfy a feature package —
+// ask P0 (foundations) to add a dep instead.
+{
+  const deps = require('./main/registry.js').buildDeps({
+    getCtx, ctxSend, windows, addCheckpoint, sendCheckpoints, copyToActive,
+    saveState, APP_VERSION, dialog, app,
+  });
+  require('./main/composer.js').register(ipcMain, deps);
+  require('./main/uploads.js').register(ipcMain, deps);
+  require('./main/gallery.js').register(ipcMain, deps);
+  require('./main/presets.js').register(ipcMain, deps);
+}
+
 ipcMain.handle('app:get-version', () => APP_VERSION);
 
 // ── Environment / terminal / nudge IPC ───────────────────────────────────
@@ -1504,8 +1526,9 @@ ipcMain.handle('env:locate-openscad', async (event) => {
     properties: ['openFile'],
   });
   if (res.canceled || !res.filePaths[0]) return { canceled: true };
-  // OPENSCAD_BIN is resolved once at startup, so this takes effect for every
-  // child spawned from here on without needing a restart.
+  // getOpenscadBin() re-reads process.env.OPENSCAD_BINARY on every call (it is
+  // a function, not a module-load constant), so this takes effect for every
+  // child spawned from here on in this session without needing a restart.
   process.env.OPENSCAD_BINARY = res.filePaths[0];
   _manifoldSupported = null;
   await probeManifold();
@@ -1671,7 +1694,7 @@ ipcMain.handle('app:export', async (event, format) => {
   ctxSend(ctx, 'export:start', { format, file: cp.file, target: result.filePath });
 
   return new Promise((resolve) => {
-    execFile(OPENSCAD_BIN, args, { timeout: 300000, env: openscadEnv() }, (err, stdout, stderr) => {
+    execFile(getOpenscadBin(), args, { timeout: 300000, env: openscadEnv() }, (err, stdout, stderr) => {
       const payload = err
         ? { error: stderr || err.message, fault: classifyRenderFailure(err, result.filePath) }
         : { path: result.filePath };
