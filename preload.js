@@ -129,5 +129,10 @@ contextBridge.exposeInMainWorld('api', {
   // clawscad:anchor:preload:gallery — P4. Handlers land in main/gallery.js.
   galleryList: () => ipcRenderer.invoke('gallery:list'),
   galleryListJobs: () => ipcRenderer.invoke('gallery:list-jobs'),
-  galleryOpenCheckpoint: (payload) => ipcRenderer.invoke('gallery:open-checkpoint', payload),
+  // No galleryOpenCheckpoint bridge: the gallery drives Open / Continue /
+  // Export through the EXISTING checkpoint:select, checkpoint:restore-session,
+  // app:open-path and app:export channels rather than a parallel one. The
+  // anchor stub for it was removed because an exposed method with no registered
+  // handler is worse than no method — it rejects at call time instead of
+  // failing to exist, so a caller discovers it only in production.
 });

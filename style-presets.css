@@ -1,14 +1,20 @@
 /* style-presets.css — owned exclusively by P3 (presets). New tokens go here
    under a :root { } block, next to their consumers.
 
-   Contrast notes (reusing tokens already audited against --surface-1 in
-   style.css's own comments, rather than inventing new hex values that would
-   need a fresh audit):
-     --fg-muted   4.9:1 — unpressed chip text
-     --fg-secondary 7.0:1 — pressed chip text
-     --accent-label 6.2:1 — recipe strip title / uppercase chrome
-     --warn       used for the refusal card's framing, same role as the
-                  composer setup card's <strong> (style-composer.css). */
+   Contrast — WCAG relative-luminance ratios computed directly against the
+   ACTUAL background each token sits on in this file (not assumed from
+   style.css's own comments, which audit these tokens against --surface-1,
+   a slightly darker surface than what most of these controls use):
+     --fg-muted    (#7f7fae) on --surface-2   (#0d0d1a) = 5.09:1 — unpressed chip text, modifier label
+     --fg-secondary(#9a9ac4) on --surface-2   (#0d0d1a) = 7.15:1 — recipe-strip meta text
+     --fg-secondary(#9a9ac4) on --preset-chip-on-bg (#1a2540) = 5.64:1 — pressed chip text
+     --accent-label(#7f9fdd) on --surface-2   (#0d0d1a) = 7.26:1 — recipe-strip title / uppercase chrome
+     --accent-label(#7f9fdd) on --preset-chip-on-bg (#1a2540) = 5.72:1 — pressed modifier chip text
+     --warn        (#f0a63c) on --surface-2   (#0d0d1a) = 9.38:1 — recipe-strip conflict notes
+   All six pairings above are >= 5:1, comfortably past AA's 4.5:1 floor for
+   normal text (three exceed AAA's 7:1). The one token that did NOT clear
+   4.5:1 in this file's actual use — --fg-faint at 3.79:1 on --surface-2 —
+   was swapped for --fg-muted; see the comment on .preset-modifier-label. */
 
 :root {
   --preset-chip-on-bg: #1a2540;
@@ -179,7 +185,12 @@
   font-size: var(--text-chrome);
   letter-spacing: var(--track-chrome);
   text-transform: uppercase;
-  color: var(--fg-faint);
+  /* --fg-faint measures 3.79:1 against --surface-2 — under AA's 4.5:1 for
+     normal text. This label ("Printer") identifies what the buttons next to
+     it control, which isn't purely decorative, so it gets --fg-muted
+     (5.09:1 against --surface-2 — see the contrast note at the top of this
+     file) instead. */
+  color: var(--fg-muted);
 }
 
 .preset-modifier-chip {

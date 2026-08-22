@@ -9,7 +9,7 @@
 // populated (see renderer/bus.js). Merge logic itself lives in the sibling
 // renderer/preset-merge.js (pure, no DOM) — this file is the DOM/IPC glue
 // around it.
-import { mergePresets, toggleChip, canonicalOrder } from './preset-merge.js';
+import { mergePresets, toggleChip, canonicalOrder, cliFlagsFor } from './preset-merge.js';
 
 // ux-spec's short chip labels win over intent-presets' full labels (master
 // plan §1.2); each preset's `summary` field becomes the tooltip instead.
@@ -369,24 +369,22 @@ export function mountPresets(ctx) {
         );
       } else {
         // Generated track — the parametric instruction blocks don't apply.
-        // window.api is frozen by contextBridge.exposeInMainWorld (verified:
-        // assigning to it throws "Cannot assign to read only property"), so
-        // there is no way to intercept pipeline:start's args from outside
-        // renderer.js/main.js — those files are P0/P1's, not mine to edit.
-        // The one flag actually reachable through the frozen composer
-        // interface is the images-stage prompt text itself, via the
-        // onSubmit hook below (setPrompt() is the legitimate mutation
-        // point). mesh/prep/checkpoint flags (--size-mm/--seeds/
-        // --target-faces/--flat-cut/--color) stay recorded in presets.json
-        // as data for a later wave that either extends ctx.composer or
-        // edits the gen-panel code directly.
+        // window.api is frozen by contextBridge.exposeInMainWorld, so it
+        // can't be intercepted directly — but P0/P1 added a ctx-level hook
+        // (renderer.js's presetFlagsFor() calls ctx.presetCliFlags(action),
+        // set at the bottom of this file) that spreads --ar/--size,
+        // --size-mm/--seeds, --target-faces/--flat-cut and --color into
+        // pipeline:start's args at all four call sites. The images-stage
+        // prompt SUFFIX (not a flag — positional text) still goes through
+        // the onSubmit hook below, since that's the only path that reaches
+        // the prompt argument itself.
         const m = merged();
         if (m.refuseGenerated) {
           lines.push(`Presets active: ${humanList()} — generated track refused, see the card above.`);
         } else if (m.generated && m.generated.generated.image_suffix) {
-          lines.push(`Presets active: ${humanList()} — an image-style suffix is appended to the prompt before it reaches the image backend.`);
+          lines.push(`Presets active: ${humanList()} — generator flags (images ar/size, mesh size/seeds, prep faces/cut, checkpoint colour) apply automatically, and an image-style suffix is appended to the prompt before it reaches the image backend.`);
         } else if (m.generated) {
-          lines.push(`Presets active: ${humanList()}.`);
+          lines.push(`Presets active: ${humanList()} — generator flags apply automatically (images ar/size, mesh size/seeds, prep faces/cut, checkpoint colour).`);
         }
       }
 
@@ -407,27 +405,32 @@ export function mountPresets(ctx) {
 
   // ── generated-track prompt-suffix injection ─────────────────────────
   // window.api is frozen by contextBridge.exposeInMainWorld — assigning to
-  // any of its properties (e.g. wrapping startPipeline) throws a TypeError
-  // at mount time, which previously took down every module mounted after
-  // this one in renderer.js's single top-level `mountComposer(ctx);
+  // any of its properties (e.g. wrapping startPipeline, my original attempt)
+  // throws a TypeError at mount time, which took down every module mounted
+  // after this one in renderer.js's single top-level `mountComposer(ctx);
   // mountUploads(ctx); mountPresets(ctx); mountGallery(ctx);
-  // mountOnboarding(ctx);` statement sequence (an uncaught throw partway
-  // through halts the rest of that line). There is no non-frozen surface in
-  // renderer.js or main.js that exposes pipeline:start's args to this
-  // package, short of editing those files (P0/P1's, not mine).
+  // mountOnboarding(ctx);` statement sequence. P1 closed the real gap this
+  // exposed: renderer.js now has its own `presetFlagsFor(action)` at each of
+  // the four pipeline:start call sites (images/mesh/prep/checkpoint), which
+  // calls `ctx.presetCliFlags(action)` — a plain field on the mutable `ctx`
+  // object (never frozen; only window.api is), set at the bottom of this
+  // function. That's the real flag path now: --ar/--size, --size-mm/--seeds,
+  // --target-faces/--flat-cut, --color. See renderer/preset-merge.js's pure
+  // `cliFlagsFor()` for the actual per-stage logic (tested in
+  // tests/preset-merge.js's "[cliFlagsFor]" block).
   //
-  // The one thing this package CAN legitimately reach is the composer's own
-  // `prompt` state, through the frozen-but-documented onSubmit hook
-  // (composer.js: "the entire coupling between P2's upload ingest and the
-  // composer" — the same mechanism works for us). dispatchGenerate()
-  // synchronously reads that state into the images stage's positional
-  // prompt argument immediately after every onSubmit handler resolves, with
-  // no await in between, so setting it here and reverting on the next
-  // macrotask (after that synchronous read has already happened) gets the
-  // preset's image_suffix onto the wire without ever touching window.api,
-  // main.js or renderer.js — at the cost of only reaching the images stage.
-  // mesh/prep/checkpoint flags stay unreachable from this package until a
-  // later wave adds an extension point (see the preamble note above).
+  // The one thing that ISN'T a flag — the images stage's prompt-suffix TEXT
+  // (positional, not `--something`) — still goes through the composer's own
+  // onSubmit hook (composer.js: "the entire coupling between P2's upload
+  // ingest and the composer" — the same mechanism works for us).
+  // dispatchGenerate() synchronously reads the composer's `prompt` state
+  // into that positional argument immediately after every onSubmit handler
+  // resolves, with no await in between, so setting it here and reverting on
+  // the next macrotask (after that synchronous read has already happened)
+  // gets image_suffix onto the wire without touching window.api, main.js or
+  // renderer.js. This is the ONLY path presets-ui.js uses now — it does not
+  // also duplicate --ar/--size here, so there's no double-application
+  // between this and ctx.presetCliFlags.
   ctx.composer.onSubmit((payload) => {
     if (!presetsData || payload.target === 'part') return;
     const m = merged();
@@ -438,4 +441,14 @@ export function mountPresets(ctx) {
     ctx.composer.setPrompt(`${original}\n\n${suffix}`, { select: false });
     setTimeout(() => ctx.composer.setPrompt(original, { select: false }), 0);
   });
+
+  // ── ctx.presetCliFlags(action) — the hook renderer.js's presetFlagsFor()
+  // calls at each pipeline:start call site. `ctx` (renderer/bus.js) is a
+  // plain mutable object populated once by renderer.js and never frozen —
+  // unlike window.api, setting a field on it after mount is exactly how
+  // this interface is meant to be extended.
+  ctx.presetCliFlags = function presetCliFlags(action) {
+    if (!presetsData) return [];
+    return cliFlagsFor(activeIds, presetsData, action);
+  };
 }

@@ -2138,7 +2138,9 @@ genGenerateBtn.addEventListener('click', async () => {
   genStartTiming();
   genSetRunning(true);
 
-  const args = [text, '-n', genCountEl.value];
+  // -n stays exactly as the user set it in #gen-count — a preset may shape the
+  // image but must not silently overrule a control the user can see.
+  const args = [text, '-n', genCountEl.value, ...presetFlagsFor('images')];
   const backends = selectedGenBackends();
   if (backends.length) args.push('--backends', backends.join(','));
 
@@ -2148,6 +2150,23 @@ genGenerateBtn.addEventListener('click', async () => {
     showToast(`Generate failed: ${result.error}`, 'error');
   }
 });
+
+// Intent presets contribute CLI flags to the generated track. The presets
+// module cannot inject these itself: these stages are driven from here through
+// `window.api`, which contextBridge freezes, so wrapping the method throws (and
+// wouldn't be observed anyway, since the call sites below read window.api
+// directly). So the flags come the other way — presets-ui.js sets
+// ctx.presetCliFlags and this asks for them at dispatch time. Never let a
+// preset fault break a generate run: on any throw, send the unmodified args.
+function presetFlagsFor(action) {
+  try {
+    const flags = ctx.presetCliFlags && ctx.presetCliFlags(action);
+    return Array.isArray(flags) ? flags.map(String) : [];
+  } catch (err) {
+    console.error('[gen] preset flag lookup failed; running without presets', err);
+    return [];
+  }
+}
 
 genMake3dBtn.addEventListener('click', async () => {
   if (!genSelectedKey || genRunning) return;
@@ -2159,7 +2178,7 @@ genMake3dBtn.addEventListener('click', async () => {
   genSetRunning(true);
   const result = await window.api.startPipeline({
     action: 'mesh',
-    args: ['--pick', index],
+    args: ['--pick', index, ...presetFlagsFor('mesh')],
     job: genJob,
   });
   if (result && result.error) {
@@ -2278,12 +2297,12 @@ window.api.onPipelineExit(({ action, code }) => {
     genPendingStage = 'prep';
     genSetStage('prep', 'running');
     genSetRunning(true);
-    window.api.startPipeline({ action: 'prep', args: [], job: genJob });
+    window.api.startPipeline({ action: 'prep', args: presetFlagsFor('prep'), job: genJob });
   } else if (action === 'prep' && genPendingStage === 'prep' && code === 0) {
     genPendingStage = 'checkpoint';
     genSetStage('checkpoint', 'running');
     genSetRunning(true);
-    window.api.startPipeline({ action: 'checkpoint', args: [], job: genJob });
+    window.api.startPipeline({ action: 'checkpoint', args: presetFlagsFor('checkpoint'), job: genJob });
   } else if (action === 'checkpoint' && genPendingStage === 'checkpoint') {
     genPendingStage = null;
     if (code === 0) {

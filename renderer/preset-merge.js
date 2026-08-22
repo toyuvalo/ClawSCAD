@@ -204,6 +204,51 @@ export function mergePresets(activeIds, presetsData) {
   };
 }
 
+/**
+ * The claw-gen CLI flags for one pipeline stage, given the active preset
+ * set — the pure counterpart to `ctx.presetCliFlags(action)` in
+ * renderer/presets-ui.js (main.js's `presetFlagsFor()` calls that, spreads
+ * the result into `pipeline:start`'s `args` at each of the four call sites).
+ * Returns `[]` when nothing is active, the generated track is refused, or
+ * the active preset simply doesn't set a flag for this stage (e.g.
+ * `prototype`'s `mesh.size_mm` is `null` — the user's own size wins).
+ *
+ * Deliberately narrow: only the four confirmed-real knobs (master plan
+ * §1.7's R-2 audit against cli.py) ever become a flag here.
+ *   images     → --ar, --size            (never -n — the user's own
+ *                                          #gen-count field wins, per the
+ *                                          renderer.js call site's own
+ *                                          comment)
+ *   mesh       → --size-mm, --seeds
+ *   prep       → --target-faces, --flat-cut  (flat_cut_caveat is prose for
+ *                                              the tooltip, never a flag)
+ *   checkpoint → --color
+ * `images`'s `image_suffix` text is NOT returned here — it isn't a flag,
+ * it's positional prompt text, and reaches the CLI through a different
+ * path (composer's onSubmit hook in renderer/presets-ui.js).
+ */
+export function cliFlagsFor(activeIds, presetsData, action) {
+  const merged = mergePresets(activeIds, presetsData);
+  if (!merged.generated) return [];
+  const cli = merged.generated.generated.cli;
+  const flags = [];
+
+  if (action === 'images' && cli.images) {
+    if (cli.images.ar) flags.push('--ar', String(cli.images.ar));
+    if (cli.images.size) flags.push('--size', String(cli.images.size));
+  } else if (action === 'mesh' && cli.mesh) {
+    if (cli.mesh.size_mm != null) flags.push('--size-mm', String(cli.mesh.size_mm));
+    if (cli.mesh.seeds != null) flags.push('--seeds', String(cli.mesh.seeds));
+  } else if (action === 'prep' && cli.prep) {
+    if (cli.prep.target_faces != null) flags.push('--target-faces', String(cli.prep.target_faces));
+    if (cli.prep.flat_cut_mm != null) flags.push('--flat-cut', String(cli.prep.flat_cut_mm));
+  } else if (action === 'checkpoint' && cli.checkpoint && cli.checkpoint.color) {
+    flags.push('--color', String(cli.checkpoint.color));
+  }
+
+  return flags;
+}
+
 // ── exclusive-pair auto-deselect (master plan §1.3) ─────────────────────
 /**
  * Apply a chip click. `activeIds` is the current active set (array),

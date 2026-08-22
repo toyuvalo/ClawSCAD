@@ -33,7 +33,7 @@ function loadPresetMerge() {
   const names = [
     'POLICIES', 'canonicalOrder', 'findPreset', 'mergeParams',
     'collectConflictNotes', 'collectPromptBlocks', 'isGeneratedRefused',
-    'refusalText', 'activeGenerated', 'mergePresets', 'toggleChip',
+    'refusalText', 'activeGenerated', 'mergePresets', 'cliFlagsFor', 'toggleChip',
   ];
   // eslint-disable-next-line no-new-func
   const factory = new Function(`${stripped}\nreturn { ${names.join(', ')} };`);
@@ -257,6 +257,68 @@ check('miniature alone does not refuse and carries its generated.cli block', () 
 check('decor-organic + fits-hardware: refused, decor-organic must branch after', () => {
   const merged = PM.mergePresets(['decor-organic', 'fits-hardware'], presetsData);
   assert.strictEqual(merged.refuseGenerated, true);
+});
+
+// ── cliFlagsFor — the pure counterpart to ctx.presetCliFlags(action),
+// which renderer.js's presetFlagsFor() now calls at all four pipeline:start
+// call sites (images/mesh/prep/checkpoint). ──────────────────────────────
+
+console.log('[cliFlagsFor]');
+
+check('miniature: images gets --ar/--size, never -n', () => {
+  const flags = PM.cliFlagsFor(['miniature'], presetsData, 'images');
+  assert.deepStrictEqual(flags, ['--ar', '3:4', '--size', '2K']);
+  assert.ok(!flags.includes('-n'), 'must never emit -n — the user\'s own #gen-count field wins');
+});
+
+check('miniature: mesh gets --size-mm/--seeds', () => {
+  const flags = PM.cliFlagsFor(['miniature'], presetsData, 'mesh');
+  assert.deepStrictEqual(flags, ['--size-mm', '32', '--seeds', '2']);
+});
+
+check('miniature: prep gets --target-faces/--flat-cut, never the caveat prose', () => {
+  const flags = PM.cliFlagsFor(['miniature'], presetsData, 'prep');
+  assert.deepStrictEqual(flags, ['--target-faces', '300000', '--flat-cut', '0']);
+});
+
+check('miniature: checkpoint gets --color', () => {
+  const flags = PM.cliFlagsFor(['miniature'], presetsData, 'checkpoint');
+  assert.deepStrictEqual(flags, ['--color', 'Gainsboro']);
+});
+
+check('prototype: mesh skips --size-mm when size_mm is null, keeps --seeds', () => {
+  const flags = PM.cliFlagsFor(['prototype'], presetsData, 'mesh');
+  assert.deepStrictEqual(flags, ['--seeds', '1']);
+});
+
+check('decor-organic: prep never emits flat_cut_caveat as a flag', () => {
+  const flags = PM.cliFlagsFor(['decor-organic'], presetsData, 'prep');
+  assert.deepStrictEqual(flags, ['--target-faces', '150000', '--flat-cut', '2.5']);
+  assert.ok(!flags.some((f) => /caveat|hardcode|plane_normal/.test(f)));
+});
+
+check('refused-track combos return [] for every stage (strong alone)', () => {
+  for (const action of ['images', 'mesh', 'prep', 'checkpoint']) {
+    assert.deepStrictEqual(PM.cliFlagsFor(['strong'], presetsData, action), []);
+  }
+});
+
+check('refused-track combos return [] even when a generating preset is also active', () => {
+  for (const action of ['images', 'mesh', 'prep', 'checkpoint']) {
+    assert.deepStrictEqual(PM.cliFlagsFor(['miniature', 'strong'], presetsData, action), []);
+  }
+});
+
+check('no active presets returns [] for every stage', () => {
+  for (const action of ['images', 'mesh', 'prep', 'checkpoint']) {
+    assert.deepStrictEqual(PM.cliFlagsFor([], presetsData, action), []);
+  }
+});
+
+check('an action the active preset has no block for returns []', () => {
+  // fits-hardware has no `generated` block at all (refuse_generated), and
+  // even a generating preset only ever supplies the four confirmed stages.
+  assert.deepStrictEqual(PM.cliFlagsFor(['miniature'], presetsData, 'unknown-stage'), []);
 });
 
 // ── dropped knobs (master plan §1.7) never reappear in the shipped data ──
