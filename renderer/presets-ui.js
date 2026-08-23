@@ -33,6 +33,7 @@ export function mountPresets(ctx) {
   let materialId = null; // second-row modifier — informational only, no CLI flag exists for it
   let printerId = null;
   let loadError = null;
+  let pendingActive = null; // a ctx.presets.setActive() that arrived before presets.json did
 
   // ── DOM ──────────────────────────────────────────────────────────────
   const wrap = document.createElement('div');
@@ -101,6 +102,11 @@ export function mountPresets(ctx) {
       }
     } catch (err) {
       loadError = String((err && err.message) || err);
+    }
+    if (pendingActive && presetsData) {
+      const known = canonicalOrder(presetsData).map((p) => p.id);
+      activeIds = known.filter((id) => pendingActive.includes(id));
+      pendingActive = null;
     }
     renderAll();
     ctx.composer.refresh();
@@ -450,5 +456,37 @@ export function mountPresets(ctx) {
   ctx.presetCliFlags = function presetCliFlags(action) {
     if (!presetsData) return [];
     return cliFlagsFor(activeIds, presetsData, action);
+  };
+
+  // ── ctx.presets — v0.4. Picking a print type in the guided grid (P8) sets
+  // the intent chips for you, which is the whole reason a non-CAD user never
+  // has to learn what "Fits hardware" means. setActive REPLACES the active
+  // set rather than toggling, and goes through the same renderAll() +
+  // composer.refresh() path a chip click does, so the chips, the recipe strip
+  // and the preamble stay in sync with the grid. Ids the taxonomy names but
+  // presets.json doesn't define are dropped silently — a category must never
+  // be able to break the chip row.
+  ctx.presets = {
+    getActive: () => activeIds.slice(),
+    has: (id) => activeIds.includes(id),
+    setActive(ids) {
+      const wanted = Array.isArray(ids) ? ids : [];
+      if (!presetsData) {
+        // presets.json is still in flight (mount() kicks load() off async and
+        // P8 mounts synchronously after us). Remember the request and let
+        // load() apply it — dropping it here would leave a category selected
+        // with none of its chips on.
+        pendingActive = wanted;
+        return;
+      }
+      const known = canonicalOrder(presetsData).map((p) => p.id);
+      const next = known.filter((id) => wanted.includes(id));
+      if (next.length === activeIds.length && next.every((id, i) => id === activeIds[i])) return;
+      activeIds = next;
+      lastNote = null;
+      refusalOverridden = false;
+      renderAll();
+      ctx.composer.refresh();
+    },
   };
 }

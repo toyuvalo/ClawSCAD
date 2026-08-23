@@ -126,6 +126,11 @@ contextBridge.exposeInMainWorld('api', {
   // clawscad:anchor:preload:presets — P3. Handlers land in main/presets.js.
   presetsLoad: () => ipcRenderer.invoke('presets:load'),
 
+  // clawscad:anchor:preload:categories — P7 (v0.4 guided make). Handler lands
+  // in main/categories.js. Returns { categories, error }; never rejects for a
+  // bad user override — the shipped taxonomy is the fallback.
+  categoriesLoad: () => ipcRenderer.invoke('categories:load'),
+
   // clawscad:anchor:preload:gallery — P4. Handlers land in main/gallery.js.
   galleryList: () => ipcRenderer.invoke('gallery:list'),
   galleryListJobs: () => ipcRenderer.invoke('gallery:list-jobs'),

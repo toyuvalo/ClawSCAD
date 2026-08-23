@@ -43,6 +43,9 @@ export function mountComposer(ctx) {
   let prompt = '';
   let submitting = false;
   let degradedReason = null; // set by refreshDegradation(); blocks submit while true
+  let submitLabelOverride = null; // set by P8 so the button names the guided action
+  let placeholderOverride = null; // set by P8 to the selected category's own example
+  let guidedState = {}; // P8's { categoryId, answers } — round-tripped in composer-state.json
   const sections = new Map(); // id -> { id, order, mount, preamble, blocks, el }
   const submitHandlers = [];
 
@@ -84,8 +87,19 @@ export function mountComposer(ctx) {
   body.id = 'composer-body';
   root.appendChild(body);
 
-  // Target radiogroup — the largest control after the textarea (master
-  // plan §1.1). Never a dropdown, never disabled.
+  // The guided slot (v0.4) — the print-type grid and the route note live
+  // here, ABOVE the target row, because "what are you making?" is the
+  // question a non-CAD user can answer and "part / sculpt / images" is not.
+  // Empty until P8 mounts into it, so its presence changes nothing on its
+  // own. Exposed as ctx.composer.guidedSlot.
+  const guidedEl = document.createElement('div');
+  guidedEl.id = 'composer-guided';
+  body.appendChild(guidedEl);
+
+  // Target radiogroup — demoted in v0.4 from the primary decision to a
+  // visible confirmation of what the category chose (style-categories.css
+  // does the demotion; the three buttons stay visible and clickable — three
+  // specs click them). Never a dropdown, never disabled.
   const targetsEl = document.createElement('div');
   targetsEl.id = 'composer-targets';
   targetsEl.setAttribute('role', 'radiogroup');
@@ -171,10 +185,23 @@ export function mountComposer(ctx) {
   submitBtn.addEventListener('click', () => submit());
   body.appendChild(submitBtn);
 
-  // 1/2/3 switch target when focus is inside the composer but not the
-  // textarea; Ctrl/Cmd+K focuses the prompt from anywhere in the app.
+  // 1/2/3 switch target when focus is inside the composer but not in a field
+  // the user could be typing into; Ctrl/Cmd+K focuses the prompt from anywhere.
+  //
+  // The original guard was `activeElement === promptEl`, which was true only
+  // while the composer contained exactly one text field. It no longer does:
+  // v0.4's guided fields include number inputs, so typing "20" into Length
+  // silently changed what the app was going to make. A hotkey that fires while
+  // someone is typing a measurement is not a hotkey, it's a trap.
+  function isTypingTarget(el) {
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
   root.addEventListener('keydown', (e) => {
-    if (document.activeElement === promptEl) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingTarget(document.activeElement)) return;
     if (e.key === '1') setTarget('part');
     else if (e.key === '2') setTarget('sculpt');
     else if (e.key === '3') setTarget('image');
@@ -197,7 +224,7 @@ export function mountComposer(ctx) {
       btn.tabIndex = checked ? 0 : -1;
       btn.classList.toggle('is-selected', checked);
     }
-    promptEl.placeholder = meta.placeholder;
+    promptEl.placeholder = placeholderOverride || meta.placeholder;
     root.dataset.target = target;
   }
 
@@ -281,6 +308,10 @@ export function mountComposer(ctx) {
       // A disabled button that still says "Make it" reads as broken rather
       // than as waiting (ux-spec §2.7).
       submitBtn.textContent = 'Describe something first';
+    } else if (submitLabelOverride) {
+      // P8 names the guided action ("Make it" / "Check it first"); the time
+      // hint still comes from the target, because that cost is real either way.
+      submitBtn.textContent = meta.timeHint ? `${submitLabelOverride}   ${meta.timeHint}` : submitLabelOverride;
     } else {
       submitBtn.textContent = meta.timeHint ? `${meta.submitLabel}   ${meta.timeHint}` : meta.submitLabel;
     }
@@ -395,13 +426,23 @@ export function mountComposer(ctx) {
     updateSubmitState();
     try {
       const payload = { target, prompt: prompt.trim(), sections: Array.from(sections.keys()) };
+      let handled = false;
       for (const cb of submitHandlers) {
         // Sequential await — this is the entire coupling between P2's
         // upload ingest and the composer (master plan §4.3): ingest must
         // finish BEFORE the prompt is dispatched.
         // eslint-disable-next-line no-await-in-loop
-        await cb(payload);
+        const result = await cb(payload);
+        // v0.4: a handler may claim the submit outright by returning
+        // { handled: true }. That is how the confirm gate runs the image →
+        // pick → mesh chain itself without the composer ALSO dispatching the
+        // same prompt a second time. Handlers that return undefined (every
+        // pre-0.4 handler) are unaffected.
+        if (result && result.handled) handled = true;
       }
+      if (handled) return;
+      // Re-read the target: a submit handler may legitimately have changed it
+      // (the guided flow sets sculpt vs part from the routing decision).
       if (target === 'part') await dispatchPart();
       else await dispatchGenerate();
     } catch (err) {
@@ -414,7 +455,12 @@ export function mountComposer(ctx) {
   }
 
   function registerSection(section) {
-    if (!section || !section.id || sections.has(section.id) || typeof section.mount !== 'function') return;
+    // v0.4: `mount` is optional. A preamble-only section (P8's category block)
+    // contributes text to "What Claude will read" and a blocking reason, but
+    // renders its own DOM elsewhere (the guided slot) and has nothing to put
+    // in the sections strip.
+    if (!section || !section.id || sections.has(section.id)) return;
+    if (section.mount !== undefined && typeof section.mount !== 'function') return;
     const wrapper = document.createElement('div');
     wrapper.className = 'composer-section';
     wrapper.dataset.sectionId = section.id;
@@ -433,10 +479,14 @@ export function mountComposer(ctx) {
     }
     if (!inserted) sectionsEl.appendChild(wrapper);
 
-    try {
-      section.mount(wrapper);
-    } catch (err) {
-      console.error('[composer] section mount() threw', section.id, err);
+    if (typeof section.mount === 'function') {
+      try {
+        section.mount(wrapper);
+      } catch (err) {
+        console.error('[composer] section mount() threw', section.id, err);
+      }
+    } else {
+      wrapper.hidden = true; // preamble-only: nothing to show in the strip
     }
     refresh();
   }
@@ -506,7 +556,9 @@ export function mountComposer(ctx) {
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
       const heightPx = root.style.height ? parseInt(root.style.height, 10) : null;
-      ctx.api.composerSetState({ target, prompt, height: heightPx || undefined }).catch(() => {});
+      ctx.api
+        .composerSetState({ target, prompt, height: heightPx || undefined, guided: guidedState })
+        .catch(() => {});
     }, 250);
   }
 
@@ -525,6 +577,9 @@ export function mountComposer(ctx) {
       if (typeof state.height === 'number' && state.height >= COMPOSER_MIN) {
         root.style.height = state.height + 'px';
       }
+      if (state.guided && typeof state.guided === 'object') {
+        guidedState = state.guided;
+      }
       refreshTargetUI();
       updatePreamble();
       updateSubmitState();
@@ -539,7 +594,11 @@ export function mountComposer(ctx) {
   updatePreamble();
   updateSubmitState();
   refreshDegradation();
-  loadPersistedState();
+  // composerGetState is async, so persisted state lands AFTER every later
+  // mountX() has already run synchronously. P8 restores its category
+  // selection by awaiting this promise rather than reading getGuidedState()
+  // at mount time, when it would still be empty.
+  const ready = loadPersistedState();
 
   // ── freeze the interface (master plan §4.3) — LAST step of mount, so
   // P2/P3/P5 never observe a partially-built ctx.composer.
@@ -552,6 +611,26 @@ export function mountComposer(ctx) {
     refresh,
     onSubmit: (cb) => {
       if (typeof cb === 'function') submitHandlers.push(cb);
+    },
+
+    // ── v0.4 guided-make additions (docs/v04-guided-make-contracts.md) ──
+    guidedSlot: guidedEl,
+    ready, // resolves once composer-state.json has been applied
+    setSubmitLabel: (text) => {
+      submitLabelOverride = typeof text === 'string' && text ? text : null;
+      updateSubmitState();
+    },
+    setPlaceholder: (text) => {
+      // P8 shows the category's own example as the placeholder. Passing null
+      // hands the placeholder back to the target's own copy. Stored rather
+      // than written directly, so a later target change doesn't clobber it.
+      placeholderOverride = typeof text === 'string' && text ? text : null;
+      refreshTargetUI();
+    },
+    getGuidedState: () => guidedState,
+    setGuidedState: (state) => {
+      guidedState = state && typeof state === 'object' ? state : {};
+      persistState();
     },
   };
 }

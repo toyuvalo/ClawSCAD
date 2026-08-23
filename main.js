@@ -10,6 +10,41 @@ const { execFile, spawn } = require('child_process');
 // app:get-version and sent in the MCP handshake, so neither can drift.
 const APP_VERSION = require('./package.json').version;
 
+// Tests only: give every launch its own Electron/Chromium profile.
+//
+// Every spec launches a fresh app per test, all against the one profile keyed
+// by app name (%APPDATA%\Electron). electronApp.close() returns before the
+// process has actually exited, so launch N+1 routinely started while N still
+// held that profile — two Chromium instances on one user-data-dir, the second
+// unable to publish its DevTools endpoint, and Playwright waiting out
+// firstWindow() on a renderer that had in fact been created. That is the
+// "Timeout exceeded while waiting for event window" the suite kept hitting,
+// and it looks identical to a code failure.
+//
+// Set only from playwright.config.js — a normal run is untouched and keeps
+// using the real profile.
+if (process.env.CLAWSCAD_TEST_PROFILE_ROOT) {
+  // Keyed on the workspace, NOT the pid. A spec that reuses one workspace
+  // across launches (categories.spec.js relaunches to prove the chosen print
+  // type persists) must see the same profile both times, while two different
+  // spec files still never share one — which is the isolation that matters.
+  const wsArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
+  const key = wsArg ? path.basename(wsArg).replace(/[^a-zA-Z0-9._-]/g, '_') : 'default';
+  app.setPath('userData', path.join(process.env.CLAWSCAD_TEST_PROFILE_ROOT, key));
+
+  // ...and run the suite on software rendering.
+  //
+  // Launching dozens of Electron apps back-to-back on a workstation whose GPU
+  // is already busy makes the GPU process die — "GPU process exited
+  // unexpectedly: exit_code=34" — and a launch that inherits that broken state
+  // creates its BrowserWindow but never finishes loading the page. Playwright
+  // then reports either "firstWindow timed out" or "waitForLoadState timed
+  // out" depending on how far it got, both of which read as an app bug and are
+  // not one. The specs assert DOM and computed styles, never rendered pixels,
+  // so software rendering costs the suite nothing.
+  app.disableHardwareAcceleration();
+}
+
 // Resolve the OpenSCAD binary: prefer bundled copy, fall back to env / system.
 // In packaged builds, extraResources lands at process.resourcesPath.
 // In dev, look in the repo's vendors/ directory (populated by download-openscad.js).
@@ -187,7 +222,18 @@ class McpClient {
 
   stop() {
     if (this.proc) {
+      // Spawned as `npx -y openscad-mcp-server` with shell:true, so this.proc
+      // is the shell — killing it orphans the npx and node grandchildren,
+      // which then outlive the app, keep the profile directory busy, and are
+      // why closing ClawSCAD used to leave a process tree behind. Kill the
+      // whole tree; taskkill is the only thing on Windows that does.
+      const pid = this.proc.pid;
       try { this.proc.kill(); } catch {}
+      if (process.platform === 'win32' && pid) {
+        try {
+          require('child_process').execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
+        } catch {} // already gone, or never started — both fine
+      }
       this.proc = null;
       this.ready = false;
     }
@@ -354,9 +400,14 @@ function openWindow(wsDir) {
   });
 
   win.on('closed', () => {
+    // `closing` must be set BEFORE anything is killed: node-pty's onExit is
+    // async, so attachRespawn's handler runs after this whole block, and
+    // without the flag it resurrects a fallback shell into a window that no
+    // longer exists (see killPty).
+    ctx.closing = true;
     if (ctx.fileWatcher) ctx.fileWatcher.close();
-    if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
-    if (ctx.ptyProcess2) try { ctx.ptyProcess2.kill(); } catch {}
+    killPty(ctx, 'ptyProcess');
+    killPty(ctx, 'ptyProcess2');
     if (ctx.pipelineChild) try { ctx.pipelineChild.kill(); } catch {}
     ctx.window = null; // Mark as destroyed so ctxSend won't touch it
     windows.delete(wcId);
@@ -984,9 +1035,33 @@ function spawnFallbackShell(ctx) {
 
 // Re-spawn a shell whenever the current pty exits, so closing Claude leaves a
 // usable terminal instead of a dead panel.
+// Kill a pty we are killing ON PURPOSE, without waking the respawn handler.
+//
+// attachRespawn exists so a crashed Claude CLI still leaves a usable terminal
+// behind — but node-pty's onExit cannot tell a crash from a deliberate kill,
+// so EVERY intentional kill (window close, workspace switch, Restart Claude)
+// also spawned a fallback shell that nothing then owned. On window close that
+// orphan kept the main process alive, so app.quit() never completed and the
+// dead-but-running app went on holding the Chromium user-data profile — which
+// is why the next launch's `window` event never arrived and Playwright's
+// firstWindow() timed out. One leak, three call sites, two symptoms.
+function killPty(ctx, key) {
+  const proc = ctx[key];
+  if (!proc) return;
+  proc.killedIntentionally = true;
+  try { proc.kill(); } catch {}
+  ctx[key] = null;
+}
+
 function attachRespawn(ctx) {
-  if (!ctx.ptyProcess) return;
-  ctx.ptyProcess.onExit(() => {
+  const proc = ctx.ptyProcess;
+  if (!proc) return;
+  proc.onExit(() => {
+    // onExit is async, so by the time this runs the window may already be
+    // gone and ctx.ptyProcess may already point at its replacement. Respawn
+    // only for an unexpected death of the pty we actually registered on.
+    if (proc.killedIntentionally || ctx.closing || !ctx.window) return;
+    if (ctx.ptyProcess && ctx.ptyProcess !== proc) return;
     ctx.ptyProcess = spawnFallbackShell(ctx);
     setTerminalKind(ctx, ctx.ptyProcess ? 'shell' : 'dead', ctx.ptyProcess ? DEFAULT_SHELL : null);
     if (ctx.ptyProcess) ctx.ptyProcess.onExit(() => {});
@@ -999,6 +1074,24 @@ function attachRespawn(ctx) {
 // resolveClaude() is what makes this work on Windows, where the CLI is
 // claude.exe / claude.cmd rather than a bare `claude` on PATH.
 function spawnClaude(ctx, args = []) {
+  // Test runs launch a fresh Electron app per test — dozens of times per
+  // suite. Starting the real Claude Code CLI each time costs seconds, holds a
+  // handle on the temp workspace (the EBUSY cleanup warnings), and is slow to
+  // die, which is what pushed electronApp.close() past Playwright's worker
+  // teardown budget and left the NEXT launch waiting for a window that never
+  // came. The specs never drive the CLI — ui-surfaces.spec.js injects
+  // terminal:label over IPC rather than reading a real spawn — so the suite
+  // runs against the fallback shell instead.
+  //
+  // Deliberately guards only the SPAWN, not resolveClaude(): probeEnvironment()
+  // must keep reporting the CLI as present, or the composer shows its
+  // "Claude Code CLI needed" degradation card and disables submit, breaking
+  // composer.spec.js's enabled-after-typing assertion.
+  if (process.env.CLAWSCAD_DISABLE_CLAUDE === '1') {
+    const proc = spawnFallbackShell(ctx);
+    setTerminalKind(ctx, proc ? 'shell' : 'dead', proc ? DEFAULT_SHELL : null);
+    return proc;
+  }
   const bin = resolveClaude();
   if (bin) {
     try {
@@ -1031,7 +1124,7 @@ function startTerminal(ctx) {
 }
 
 function restartTerminal(ctx, args = []) {
-  if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
+  killPty(ctx, 'ptyProcess'); // without this, Restart Claude left a shell behind every time
   ctx.ptyProcess = spawnClaude(ctx, args);
   attachRespawn(ctx);
 }
@@ -1511,6 +1604,7 @@ ipcMain.handle('pipeline:read-image', (event, filePath) => {
   require('./main/uploads.js').register(ipcMain, deps);
   require('./main/gallery.js').register(ipcMain, deps);
   require('./main/presets.js').register(ipcMain, deps);
+  require('./main/categories.js').register(ipcMain, deps);
 }
 
 ipcMain.handle('app:get-version', () => APP_VERSION);
@@ -1634,7 +1728,7 @@ ipcMain.handle('app:open-workspace', async (event) => {
   if (!result.canceled && result.filePaths[0]) {
     // Replace this window's workspace
     if (ctx.fileWatcher) ctx.fileWatcher.close();
-    if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
+    killPty(ctx, 'ptyProcess');
     ctx.workspaceDir = result.filePaths[0];
     initWorkspace(ctx);
     loadState(ctx);
@@ -1758,7 +1852,7 @@ ipcMain.handle('app:open-path', async (event, inputPath) => {
     if (stat.isDirectory()) {
       // Switch workspace to this directory
       if (ctx.fileWatcher) ctx.fileWatcher.close();
-      if (ctx.ptyProcess) try { ctx.ptyProcess.kill(); } catch {}
+      killPty(ctx, 'ptyProcess');
       ctx.workspaceDir = inputPath;
       initWorkspace(ctx);
       loadState(ctx);
@@ -1803,4 +1897,20 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   mcpClient.stop();
   app.quit();
+});
+
+// Belt and braces for the leak killPty closes: quit must be able to complete
+// even if a window was destroyed by a path that skipped its 'closed' handler
+// (a crash, a forced quit, or a spec's electronApp.close()). A single
+// surviving pty or pipeline child is enough to keep the main process — and
+// its lock on the user-data profile — alive indefinitely.
+app.on('before-quit', () => {
+  for (const ctx of windows.values()) {
+    ctx.closing = true;
+    if (ctx.fileWatcher) try { ctx.fileWatcher.close(); } catch {}
+    killPty(ctx, 'ptyProcess');
+    killPty(ctx, 'ptyProcess2');
+    if (ctx.pipelineChild) try { ctx.pipelineChild.kill(); } catch {}
+  }
+  try { mcpClient.stop(); } catch {}
 });

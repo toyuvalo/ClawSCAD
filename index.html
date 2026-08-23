@@ -13,6 +13,11 @@
   <link rel="stylesheet" href="./style-uploads.css">
   <link rel="stylesheet" href="./style-presets.css">
   <link rel="stylesheet" href="./style-gallery.css">
+  <!-- v0.4 guided make. These two load AFTER style-composer.css on purpose:
+       P8 demotes #composer-targets from its own file, and equal-specificity
+       rules need to win. -->
+  <link rel="stylesheet" href="./style-categories.css">
+  <link rel="stylesheet" href="./style-confirm.css">
   <!-- P5 (onboarding) also injects this link imperatively as a fallback; the id
        matches the one its guard looks for, so the static tag wins and the
        injection no-ops. Declared here so the packaged build ships it. -->
@@ -304,6 +309,11 @@
   <!-- clawscad:anchor:gallery-sheet — P4 mounts the gallery modal here.
        Empty and hidden until then so it has zero effect on layout/tests. -->
   <div id="gallery-sheet" hidden></div>
+
+  <!-- clawscad:anchor:confirm-sheet — P9 mounts the "does this look right?"
+       modal here. Sibling of the gallery sheet, same modal conventions.
+       Empty and hidden until then so it has zero effect on layout/tests. -->
+  <div id="confirm-sheet" hidden></div>
 
   <!-- Toast notifications -->
   <div id="toast-container" role="status" aria-live="polite"></div>

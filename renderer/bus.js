@@ -23,7 +23,12 @@ export const ctx = {
   workspaceDir: '',       // kept in sync in place once window.api.getWorkspace() resolves — may still be '' briefly at mount time
   els: {},                // a handful of shared containers, keyed by short name — see the clawscad:anchor:modules block in renderer.js
   composer: null,         // filled by P1 once its module mounts — shape frozen in master plan §4.3; null until then
+  presets: null,          // filled by P3 (presets-ui.js): { getActive(), setActive(ids), has(id) }
+  guided: null,           // filled by P8 (categories-ui.js) — see docs/v04-guided-make-contracts.md
+  confirm: null,          // filled by P9 (confirm-gate.js): { open(opts) => Promise<Result> }
+  categories: null,       // { data, error } — loaded once by renderer.js BEFORE the mount calls
   onCheckpointsChanged,   // (cb) => void — fan-out subscription, see below
+  onPipelineEvent,        // (cb) => void — fan-out subscription, see below
 };
 
 // The raw window.api.onCheckpointUpdate registrar has no unsubscribe, so it
@@ -45,6 +50,26 @@ export function notifyCheckpointsChanged(state) {
       cb(state);
     } catch (err) {
       console.error('[bus] onCheckpointsChanged subscriber threw', err);
+    }
+  }
+}
+
+// Same contract for the generation pipeline's event stream. renderer.js owns
+// the single window.api.onPipelineEvent registration (standing rule 4) and
+// fans out here; the confirm gate (P9) needs `candidate` / `score` / `done` /
+// `error` events to build its picker and must never register a second handler.
+const _pipelineSubscribers = [];
+
+function onPipelineEvent(cb) {
+  if (typeof cb === 'function') _pipelineSubscribers.push(cb);
+}
+
+export function notifyPipelineEvent(evt) {
+  for (const cb of _pipelineSubscribers) {
+    try {
+      cb(evt);
+    } catch (err) {
+      console.error('[bus] onPipelineEvent subscriber threw', err);
     }
   }
 }

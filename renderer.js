@@ -8,7 +8,7 @@ import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
 // bus.js has no side effects at import time (plain object + function decls) —
 // safe to import here despite ESM import hoisting. See renderer/bus.js.
-import { ctx, notifyCheckpointsChanged } from './renderer/bus.js';
+import { ctx, notifyCheckpointsChanged, notifyPipelineEvent } from './renderer/bus.js';
 
 // ── Toast System ────────────────────────────────────────────────────────
 
@@ -2259,6 +2259,14 @@ window.api.onPipelineEvent((evt) => {
       genPendingStage = null;
       break;
   }
+
+  // Fan out to feature modules (the confirm gate builds its picker from
+  // `candidate` and `score`). window.api.onPipelineEvent has no unsubscribe
+  // and must be registered exactly once — standing rule 4 — so subscribers go
+  // through ctx.onPipelineEvent instead. Fanning out LAST means a throwing
+  // subscriber can never break the Generate panel's own handling above
+  // (notifyPipelineEvent try/catches each subscriber anyway).
+  notifyPipelineEvent(evt);
 });
 
 // A ten-minute job finishes while the window is unfocused, and the only
@@ -3482,6 +3490,7 @@ ctx.workspaceDir = workspaceDir; // may still be '' here — window.api.getWorks
 ctx.els = {
   composer: document.getElementById('composer'),
   gallerySheet: document.getElementById('gallery-sheet'),
+  confirmSheet: document.getElementById('confirm-sheet'),
   viewportsContainer: document.getElementById('viewports-container'),
   rightPanel: document.getElementById('right-panel'),
   mainContent: document.getElementById('main-content'),
@@ -3492,4 +3501,33 @@ import { mountUploads } from './renderer/uploads.js';
 import { mountPresets } from './renderer/presets-ui.js';
 import { mountGallery } from './renderer/gallery.js';
 import { mountOnboarding } from './renderer/onboarding.js';
+import { mountConfirmGate } from './renderer/confirm-gate.js';
+import { mountGuided } from './renderer/categories-ui.js';
 mountComposer(ctx); mountUploads(ctx); mountPresets(ctx); mountGallery(ctx); mountOnboarding(ctx);
+
+// ── v0.4 guided make (docs/v04-guided-make-contracts.md) ────────────────
+// Order matters and is fixed: the confirm gate publishes ctx.confirm, and the
+// guided grid reads BOTH ctx.confirm and ctx.presets, so it mounts last. The
+// taxonomy is fetched before either, because a grid with no categories is a
+// blank panel rather than a degraded one — on failure ctx.categories carries
+// the error text and P8 renders a stated fallback instead of nothing.
+window.api
+  .categoriesLoad()
+  .then((result) => {
+    ctx.categories = result && typeof result === 'object' ? result : { categories: null, error: 'categories:load returned nothing' };
+  })
+  .catch((err) => {
+    ctx.categories = { categories: null, error: String((err && err.message) || err) };
+  })
+  .then(() => {
+    try {
+      mountConfirmGate(ctx);
+    } catch (err) {
+      console.error('[renderer] mountConfirmGate threw', err);
+    }
+    try {
+      mountGuided(ctx);
+    } catch (err) {
+      console.error('[renderer] mountGuided threw', err);
+    }
+  });

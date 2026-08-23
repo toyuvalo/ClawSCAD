@@ -17,6 +17,31 @@ ClawSCAD wraps [OpenSCAD](https://openscad.org/) and [Claude Code](https://githu
 
 ![ClawSCAD screenshot](screenshot.png)
 
+## Making something
+
+You do not need to know CAD, and you do not need to know which part of the app to use.
+
+1. **Pick what you're making** — a grid of print types: screws & hardware, brackets & mounts,
+   boxes & cases, furniture, structural, replacement part, models & figures, home decor,
+   toys & games, or *something else*.
+2. **Describe it in plain English** — *"an M4 standoff 20 mm long"*, *"a squat owl planter with
+   big round eyes"*. Optional guided fields (thread size, height, what it has to fit) appear for
+   the type you picked; every one of them is optional.
+3. **Press the button.** That's it.
+
+Picking a type sets the print settings and the modelling approach for you — walls, tolerances,
+resolution, orientation rules, whether it's built parametrically or sculpted. Those controls are
+all still there, demoted to a *Fine-tune* row, if you want them.
+
+**Obvious things just get made.** A standoff with a thread and a length has one right answer, so
+ClawSCAD goes straight to a printable model. **Things that are a matter of taste get checked
+first**: it generates a few reference pictures and asks *"is this the thing?"* before spending ten
+minutes on a mesh. For a replacement part it asks for a photo of the real object instead, because
+that is what actually makes it fit.
+
+The app always tells you which of those it chose and why, in one sentence, and you can always
+override it — *Show me options first* / *Skip the check, just make it*.
+
 ## Features
 
 **3D Viewport**
@@ -107,8 +132,9 @@ npm start
 ## Usage
 
 1. Launch ClawSCAD — workspace created at `E:\clawscad-workspace\` on Windows, `~/clawscad-workspace/` elsewhere
-2. Claude Code starts in the terminal panel
-3. Describe what you want: *"Make a gear with 20 teeth and a 5mm shaft hole"*
+2. Pick a print type in the **Make** panel, then describe what you want:
+   *"a gear with 20 teeth and a 5 mm shaft hole"*
+3. Press **Make it**. (Claude Code runs in the terminal below — you can watch it work, or ignore it.)
 4. Claude writes a `.scad` file — ClawSCAD auto-renders it in the viewport
 5. If the render fails, ClawSCAD tells Claude to fix it automatically
 6. Click any checkpoint in the Checkpoints panel to go back and branch — the strip above the tree always names the checkpoint your next change will branch from
@@ -135,7 +161,11 @@ ClawSCAD/
 ├── renderer.js   Three.js viewport, xterm.js terminal, Monaco editor, checkpoint tree
 ├── preload.js    IPC bridge
 ├── index.html    Layout
-└── style.css     Dark theme
+├── style.css     Dark theme
+├── main/         Per-feature main-process modules (register(ipcMain, deps))
+├── renderer/     Per-feature renderer modules, mounted through renderer/bus.js
+├── presets/      Product data — print types (categories.json), intent presets, machine profile
+└── docs/         Design contracts each feature package was built against
 ```
 
 - **Rendering**: OpenSCAD CLI (`openscad -o output.3mf input.scad`), 3MF first, falls back to STL
