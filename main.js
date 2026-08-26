@@ -955,6 +955,13 @@ function ctxSend(ctx, channel, data) {
   }
 }
 
+// Same guarantees as ctxSend, fanned out to every live window. For state that
+// belongs to the app rather than to one workspace — currently the auto-update
+// status, which is identical in every window.
+function broadcastAll(channel, data) {
+  for (const ctx of windows.values()) ctxSend(ctx, channel, data);
+}
+
 function sendFileContent(ctx, scadFilename) {
   const filePath = path.join(ctx.workspaceDir, scadFilename);
   try {
@@ -1609,6 +1616,13 @@ ipcMain.handle('pipeline:read-image', (event, filePath) => {
 
 ipcMain.handle('app:get-version', () => APP_VERSION);
 
+// ── Auto-update ──────────────────────────────────────────────────────────
+// Handlers are registered here (module load) so a renderer that asks for the
+// status before whenReady still gets an answer; the polling loop only starts
+// in whenReady below.
+const updater = require('./main/updater.js');
+updater.register(ipcMain);
+
 // ── Environment / terminal / nudge IPC ───────────────────────────────────
 
 ipcMain.handle('env:status', (event) => probeEnvironment());
@@ -1888,6 +1902,9 @@ app.whenReady().then(async () => {
   mcpClient.start().catch(() => {});
   // Probe once, before any render can need the answer.
   probeManifold().catch(() => {});
+  // Auto-update: first check is delayed inside init() so it never competes with
+  // the work above.
+  updater.init({ broadcast: broadcastAll });
 
   const cliArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
   const wsDir = cliArg ? path.resolve(cliArg) : defaultWorkspaceDir();

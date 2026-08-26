@@ -2170,6 +2170,28 @@ a.small-btn {
   font-size: var(--text-chrome);
 }
 
+/* ── Update pill (status bar) ────────────────────────────────────────
+   Shown only for a STAGED update. "Checking" and "downloading" stay silent:
+   a notification the user cannot act on is noise, and the install happens on
+   quit anyway — the pill exists so they can take it sooner if they want. */
+
+.update-pill {
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-chrome);
+  padding: 1px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.update-pill:hover {
+  background: var(--accent);
+  color: var(--surface-0);
+}
+
 /* ── Generate Panel ────────────────────────────────────────────────── */
 
 #gen-panel {

@@ -2430,6 +2430,36 @@ window.api.getAppVersion().then((v) => {
   if (versionEl && v) versionEl.textContent = `v${v}`;
 });
 
+// ── Auto-update status pill ─────────────────────────────────────────────
+// The updater installs on quit by itself, so the only state worth showing is
+// READY: "a newer ClawSCAD is already downloaded, restart whenever you like".
+// Checking / downloading / errors stay out of the user's way — an update they
+// can't act on is not news, and a failed check is not their problem to fix.
+(() => {
+  const pill = document.getElementById('update-pill');
+  if (!pill || !window.api.onUpdateStatus) return;
+
+  function render(s) {
+    if (s && s.status === 'ready' && s.version) {
+      pill.textContent = `Update ready — v${s.version}`;
+      pill.title = `ClawSCAD ${s.version} has been downloaded. It installs when you quit, or click to restart now.`;
+      pill.classList.remove('hidden');
+    } else {
+      pill.classList.add('hidden');
+    }
+  }
+
+  pill.addEventListener('click', () => {
+    pill.disabled = true;
+    pill.textContent = 'Restarting…';
+    window.api.installUpdate();
+  });
+
+  window.api.onUpdateStatus(render);
+  // A window opened after the update was staged has missed the push.
+  window.api.getUpdateStatus().then(render).catch(() => {});
+})();
+
 window.api.getWorkspace().then((ws) => {
   // Detect home dir from the workspace path (POSIX and Windows both)
   const match = ws.match(/^(\/home\/[^/]+|\/Users\/[^/]+|\/root|[A-Za-z]:\\Users\\[^\\]+)/);
