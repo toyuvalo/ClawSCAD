@@ -1,5 +1,11 @@
 const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const path = require('path');
+
+// Single source of truth for the app version — surfaced over IPC as
+// app:get-version so the UI can never drift from what was actually shipped.
+// Never re-declare this as a literal; electron-builder ships package.json
+// inside the asar, so this resolves in a packaged build too.
+const APP_VERSION = require('./package.json').version;
 const fs = require('fs');
 const os = require('os');
 let pty;
@@ -828,6 +834,13 @@ function ctxSend(ctx, channel, data) {
   }
 }
 
+// Same guarantees as ctxSend, fanned out to every live window. For state that
+// belongs to the app rather than to one workspace — currently the auto-update
+// status, which is identical in every window.
+function broadcastAll(channel, data) {
+  for (const ctx of windows.values()) ctxSend(ctx, channel, data);
+}
+
 function sendFileContent(ctx, scadFilename) {
   const filePath = path.join(ctx.workspaceDir, scadFilename);
   try {
@@ -1337,11 +1350,23 @@ ipcMain.handle('app:toggle-devtools', (event) => {
 
 ipcMain.handle('app:window-count', () => windows.size);
 
+ipcMain.handle('app:get-version', () => APP_VERSION);
+
+// ── Auto-update ──────────────────────────────────────────────────────────
+// Handlers are registered here (module load) so a renderer that asks for the
+// status before whenReady still gets an answer; the polling loop only starts
+// in whenReady below.
+const updater = require('./main/updater.js');
+updater.register(ipcMain);
+
 // ── App Lifecycle ───────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
   // Start the MCP server early so it's warm by the time we need it
   mcpClient.start().catch(() => {});
+  // Auto-update: the first check is delayed inside init() so it never competes
+  // with startup work.
+  updater.init({ broadcast: broadcastAll });
 
   const cliArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
   const wsDir = cliArg ? path.resolve(cliArg) : path.join(os.homedir(), 'gemscad-workspace');

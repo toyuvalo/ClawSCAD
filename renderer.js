@@ -2504,3 +2504,37 @@ function animate() {
 
 animate();
 
+
+// ── App version + auto-update status pill ───────────────────────────────
+// The version comes from main (package.json) so the UI can never drift from
+// what was shipped. The updater installs on quit by itself, so the only state
+// worth showing is READY: "a newer gemscad is already downloaded".
+window.api.getAppVersion().then((v) => {
+  const versionEl = document.getElementById('app-version');
+  if (versionEl && v) versionEl.textContent = `v${v}`;
+}).catch(() => {});
+
+(() => {
+  const pill = document.getElementById('update-pill');
+  if (!pill || !window.api.onUpdateStatus) return;
+
+  function render(s) {
+    if (s && s.status === 'ready' && s.version) {
+      pill.textContent = `Update ready — v${s.version}`;
+      pill.title = `gemscad ${s.version} has been downloaded. It installs when you quit, or click to restart now.`;
+      pill.classList.remove('hidden');
+    } else {
+      pill.classList.add('hidden');
+    }
+  }
+
+  pill.addEventListener('click', () => {
+    pill.disabled = true;
+    pill.textContent = 'Restarting…';
+    window.api.installUpdate();
+  });
+
+  window.api.onUpdateStatus(render);
+  // A window opened after the update was staged has missed the push.
+  window.api.getUpdateStatus().then(render).catch(() => {});
+})();

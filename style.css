@@ -1647,3 +1647,30 @@ body.dragging #splitter {
   border-color: #2a2a5a;
   background: #1a1a38;
 }
+
+/* ── App version + update pill (status bar) ────────────────────────
+   The pill is shown ONLY for a STAGED update. Checking, downloading and
+   failed checks stay silent: the install happens on quit by itself, so a
+   notification the user cannot act on is just noise. The pill exists so they
+   can take the update sooner if they want to. */
+
+.app-version {
+  color: #7f7fae;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+}
+
+.update-pill {
+  border: 1px solid #4488ff;
+  background: transparent;
+  color: #4488ff;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.update-pill:hover { background: #4488ff; color: #08081a; }
+.update-pill.hidden { display: none; }

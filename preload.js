@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  // App version + auto-update. getAppVersion resolves to package.json's
+  // version (main derives it, never a literal). checkUpdates/installUpdate
+  // forward no payload — a compromised renderer can only ask 'check now' or
+  // 'restart into the build that was already downloaded'.
+  getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+  getUpdateStatus: () => ipcRenderer.invoke('app:get-update-status'),
+  checkUpdates: () => ipcRenderer.invoke('app:check-updates'),
+  installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  onUpdateStatus: (cb) => ipcRenderer.on('app:update-status', (_, data) => cb(data)),
+
   // Terminal (primary)
   onTerminalData: (cb) => ipcRenderer.on('terminal:data', (_, data) => cb(data)),
   sendTerminalInput: (data) => ipcRenderer.send('terminal:input', data),
