@@ -5,7 +5,7 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
-## [0.5.0] - 2026-08-26
+## [0.5.1] - 2026-08-26
 
 ### Added
 
@@ -23,4 +23,4 @@ matching `## [x.y.z]` section below, so keep the heading format exact.
 ### Notes
 
 - The build already installed on your machine has no updater, so **one final
-  manual install is unavoidable**. Every version after 0.5.0 updates itself.
+  manual install is unavoidable**. Every version after 0.5.1 updates itself.
