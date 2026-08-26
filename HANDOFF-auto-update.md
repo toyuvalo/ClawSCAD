@@ -61,6 +61,66 @@ build (matching version, matching path, matching sha512), uploads with `gh` one
 file at a time, and then **fetches the published `latest.yml` back over HTTP** to
 prove the feed actually works before it says it succeeded.
 
+## ⚠ Publish-target check: `toyuvalo/ClawSCAD` is NOT exclusively ours
+
+I was asked to confirm this app publishes to a repo where nothing else publishes.
+**It does not, and that needs settling before the first release.**
+
+Why it matters: `electron-updater` resolves **the newest Release in a repo**, not
+the newest release of a *product*. `appId` (`com.clawscad.app`) does **not**
+protect the update feed — only repo separation does.
+
+**① Another product's repo points here.** `E:\gemscad-workspace\ClawSCAD`
+(product `gemscad`, `appId` `com.gemscad.app`) has a `fork` remote pointing at
+`git@github.com:toyuvalo/ClawSCAD.git` — this exact repo. gemscad has **not** been
+configured to publish here (its `build.publish` is a deliberate placeholder and
+its release script refuses to run), so **nothing is broken today**. But the
+obvious-looking move of "just publish gemscad to our fork" would make the two
+apps cross-feed: a gemscad release offered to ClawSCAD users and vice versa —
+**an app silently replacing itself with a different app.** If anyone proposes it,
+that is the reason not to.
+
+**② CI in *this* repo already publishes releases, and it will corrupt yours.**
+`.github/workflows/build-{windows,linux,macos}.yml` trigger on
+`tags: ['v*', '20*']` and end with `softprops/action-gh-release` uploading
+`release/*.exe` / `*.AppImage` / `*.dmg` — **no `.blockmap`, no `latest.yml`**.
+
+The collision is silent and permanent:
+
+1. `npm run release` calls `gh release create v0.5.1`, which **creates the tag**.
+2. That tag push matches `tags: ['v*']`, and all three workflows start.
+3. Minutes later CI finishes its own build and uploads its
+   `ClawSCAD-Setup-0.5.1.exe` over yours — same filename, so it replaces it.
+4. It is a different binary, so its sha512 no longer matches the `latest.yml`
+   you published.
+5. `electron-updater` refuses any download whose hash doesn't match the manifest.
+   **Every client is then permanently unable to apply that update** — and the
+   release script will already have printed green, because CI hadn't finished
+   when the read-back ran.
+
+The repo currently has **0 releases** and one tag (`v20260317`), so this has never
+fired. Your first `npm run release` would be the first time.
+
+**`scripts/release.ps1` now refuses to publish when the tag matches one of those
+workflows.** It runs the full build and every artifact assertion first, then stops
+with this explanation. Verified both directions: `v0.5.1` and `20260317` are
+detected as colliding; `release-0.5.1` and `desktop-v1.0.0` are not. The guard
+reads the workflow files at run time, so it disarms itself once CI is fixed.
+
+Pick one — both are one-liners, and both are yours to choose:
+
+- **(a)** Remove the `tags:` trigger, or just the "Upload to release" step, from
+  the three workflows, leaving releases to `npm run release`. My recommendation:
+  CI keeps building on `main` and PRs for verification, and exactly one publisher
+  owns the feed.
+- **(b)** Publish under a tag those workflows don't match:
+  `npm run release -- -Tag release-0.5.1`. Zero CI changes — `electron-updater`
+  doesn't care about tag names, only assets.
+
+Do **not** solve it by making CI upload all three artifacts: `latest.yml` is
+per-platform, three parallel jobs would race on it, and you would lose the
+read-back verification this script exists to provide.
+
 ## The one-time manual install
 
 **The version currently installed on any machine has no updater in it, so it

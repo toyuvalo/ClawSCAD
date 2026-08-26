@@ -121,6 +121,69 @@ Ok 'latest.yml sha512 matches the built installer'
 
 if ($DryRun) { Write-Host "`nDry run - nothing published." -ForegroundColor Yellow; exit 0 }
 
+# --- 2b. CI collision guard ---------------------------------------------------
+# This repo has tag-triggered workflows (.github/workflows/build-*.yml) that
+# publish to the SAME GitHub repo via softprops/action-gh-release, uploading
+# `release/*.exe` / `*.AppImage` / `*.dmg` -- and NOTHING else. No .blockmap, no
+# latest.yml.
+#
+# That collides with this script in a way that is silent and permanent:
+#
+#   1. `gh release create v0.5.1` below CREATES the tag v0.5.1.
+#   2. That tag push matches the workflows' `tags: ['v*', '20*']` trigger.
+#   3. Minutes later CI finishes its OWN build and action-gh-release uploads its
+#      ClawSCAD-Setup-<version>.exe over the one we just published. Same name,
+#      so it replaces ours.
+#   4. It is a DIFFERENT binary, so its sha512 differs from the one recorded in
+#      the latest.yml we uploaded and verified.
+#   5. electron-updater refuses any download whose hash does not match the
+#      manifest. Every client is now permanently unable to apply that update --
+#      and this script will already have printed a green success, because CI had
+#      not finished when the read-back ran.
+#
+# So: refuse, rather than publish into a race we cannot verify. Two one-line
+# escapes, both the owner's call (see HANDOFF-auto-update.md):
+#   (a) drop the `tags:` trigger or the "Upload to release" step from the three
+#       workflows, leaving releases to this script; or
+#   (b) publish under a tag those workflows do not match, e.g.
+#       `npm run release -- -Tag release-$version`.
+$wfDir = Join-Path $repoRoot '.github/workflows'
+if (Test-Path $wfDir) {
+  $colliding = @()
+  foreach ($wf in Get-ChildItem $wfDir -Filter '*.yml' -ErrorAction SilentlyContinue) {
+    $text = Get-Content $wf.FullName -Raw
+    if ($text -notmatch 'action-gh-release') { continue }
+    $m = [regex]::Match($text, "(?m)^\s*tags:\s*\[(.+)\]\s*$")
+    if (-not $m.Success) { continue }
+    foreach ($pat in ($m.Groups[1].Value -split ',')) {
+      $glob = $pat.Trim().Trim("'").Trim('"')
+      if ([string]::IsNullOrWhiteSpace($glob)) { continue }
+      # Glob -> regex: only '*' is meaningful in a workflow tag filter.
+      $rx = '^' + [regex]::Escape($glob).Replace('\*', '.*') + '$'
+      if ($Tag -match $rx) { $colliding += "$($wf.Name) (tags: $glob)"; break }
+    }
+  }
+  if ($colliding.Count -gt 0) {
+    Write-Host "`n  FAIL  refusing to publish - CI would clobber this release" -ForegroundColor Red
+    Write-Host "  Tag '$Tag' matches tag-triggered release workflows:" -ForegroundColor Red
+    $colliding | ForEach-Object { Write-Host "    - $_" -ForegroundColor Red }
+    Write-Host ""
+    Write-Host "  Those workflows upload their OWN build of the .exe to the same release." -ForegroundColor Yellow
+    Write-Host "  It replaces ours, its sha512 no longer matches latest.yml, and every" -ForegroundColor Yellow
+    Write-Host "  electron-updater client silently refuses the download - permanently." -ForegroundColor Yellow
+    Write-Host "  CI finishes AFTER this script's read-back, so the failure is invisible here." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Fix one of these (see HANDOFF-auto-update.md), then re-run:" -ForegroundColor Cyan
+    Write-Host "    (a) remove the 'Upload to release' step or the tags: trigger from those workflows" -ForegroundColor Cyan
+    Write-Host "    (b) publish under a non-matching tag:  npm run release -- -Tag release-$version" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  The build and every artifact assertion above already passed - nothing" -ForegroundColor Cyan
+    Write-Host "  else is blocking a release once this is settled." -ForegroundColor Cyan
+    exit 1
+  }
+  Ok 'no tag-triggered release workflow matches this tag'
+}
+
 # --- 3. publish --------------------------------------------------------------
 Step "Publishing $Tag to GitHub"
 
