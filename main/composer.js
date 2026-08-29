@@ -31,6 +31,30 @@ function writeState(app, state) {
   }
 }
 
+/**
+ * composer-state.json has more than one owner as of v0.6, so a set-state that
+ * overwrote the file wholesale was a silent data-loss bug: the composer's
+ * persistState() writes { target, prompt, height, guided } on every keystroke,
+ * which would have deleted the studio's `studio` key a fraction of a second
+ * after it was written. Each owner writes only its own top-level keys, so a
+ * shallow top-level merge is exactly the right semantics.
+ *
+ * The one exception is deliberate and load-bearing: **an empty object clears
+ * the file.** Five specs call `composerSetState({})` as a whole-file reset in
+ * afterAll, and under a pure merge that reset would become a no-op and leak
+ * state into every later spec — a far worse bug than the one being fixed. So
+ * `{}` means "clear", anything else means "partial update". Kept as a pure
+ * function so tests/composer-state.js can prove both branches without Electron.
+ */
+function mergeState(prev, next) {
+  if (!next || typeof next !== 'object' || Array.isArray(next)) return prev;
+  if (Object.keys(next).length === 0) return {};
+  const base = prev && typeof prev === 'object' && !Array.isArray(prev) ? prev : {};
+  return { ...base, ...next };
+}
+
+exports.mergeState = mergeState;
+
 exports.register = function register(ipcMain, deps) {
   const { getCtx, app } = deps;
 
@@ -57,7 +81,9 @@ exports.register = function register(ipcMain, deps) {
 
   ipcMain.handle('composer:set-state', (event, state) => {
     if (!state || typeof state !== 'object') return false;
-    writeState(app, state);
+    // Merge, don't overwrite — see mergeState. The composer and the studio are
+    // both owners of this file now, and each writes only its own keys.
+    writeState(app, mergeState(readState(app), state));
     return true;
   });
 };
