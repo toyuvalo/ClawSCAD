@@ -4,12 +4,11 @@
   "description": "AI-powered 3D CAD — OpenSCAD + Claude Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
-    "postinstall": "electron-rebuild -f -w node-pty",
     "build:renderer": "node -e \"require('fs').mkdirSync('dist',{recursive:true})\" && esbuild renderer.js --bundle --outfile=dist/renderer.js --format=esm --platform=browser --loader:.ttf=file",
     "download-openscad": "node scripts/download-openscad.js",
     "start": "npm run build:renderer && electron . --no-sandbox",
     "dev": "npm run build:renderer && electron . --dev --no-sandbox",
-    "test:harness": "node tests/error-handler-survival.js && node tests/render-fault-classify.js && node tests/preset-merge.js && node tests/route.js && node tests/tools.js",
+    "test:harness": "node scripts/check-native-deps.js && node tests/error-handler-survival.js && node tests/render-fault-classify.js && node tests/preset-merge.js && node tests/route.js && node tests/tools.js",
     "test": "npm run build:renderer && npm run test:harness && npx playwright test",
     "test:headed": "npm run build:renderer && npx playwright test --headed",
     "pack": "npm run download-openscad && npm run build:renderer && electron-builder --dir",
@@ -73,6 +72,7 @@
       "output": "release"
     },
     "productName": "ClawSCAD",
+    "npmRebuild": false,
     "artifactName": "${productName}-${version}.${ext}",
     "files": [
       "main.js",
