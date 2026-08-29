@@ -36,22 +36,30 @@ function readJson(filePath) {
   }
 }
 
+/**
+ * The load itself, with no Electron in it — see main/tools.js's loadTools for
+ * why. The web server serves the SAME taxonomy through the same override
+ * rules rather than reimplementing them.
+ */
+function loadCategories(userDataDir) {
+  const shipped = readJson(path.join(SHIPPED_DIR, FILENAME));
+  const overridePath = path.join(userDataDir, 'presets', FILENAME);
+  const override = readJson(overridePath);
+
+  const data = override.data || shipped.data;
+  const errors = [override.error, shipped.error].filter(Boolean);
+
+  return {
+    categories: data,
+    source: override.data ? 'userData' : 'shipped',
+    overridePath,
+    error: errors.length ? errors.join(' | ') : null,
+  };
+}
+
+exports.loadCategories = loadCategories;
+
 exports.register = function register(ipcMain, deps) {
   const { app } = deps;
-
-  ipcMain.handle('categories:load', () => {
-    const shipped = readJson(path.join(SHIPPED_DIR, FILENAME));
-    const overridePath = path.join(app.getPath('userData'), 'presets', FILENAME);
-    const override = readJson(overridePath);
-
-    const data = override.data || shipped.data;
-    const errors = [override.error, shipped.error].filter(Boolean);
-
-    return {
-      categories: data,
-      source: override.data ? 'userData' : 'shipped',
-      overridePath,
-      error: errors.length ? errors.join(' | ') : null,
-    };
-  });
+  ipcMain.handle('categories:load', () => loadCategories(app.getPath('userData')));
 };

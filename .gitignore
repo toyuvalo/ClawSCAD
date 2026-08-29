@@ -11,3 +11,7 @@ playwright-report/
 *.log
 tests/fixtures/*.exe
 tests/fixtures/*.pdb
+
+# web port runtime logs
+web-server.log
+web-server.err

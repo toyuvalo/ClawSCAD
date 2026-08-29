@@ -38,22 +38,33 @@ function readJson(filePath) {
   }
 }
 
+/**
+ * The load itself, with no Electron in it. Exported separately so the web
+ * server (web/server.js) serves the SAME catalog through the same override
+ * rules — one implementation, not a second one that drifts.
+ *
+ * `userDataDir` is where the optional override lives; Electron passes
+ * app.getPath('userData'), the web server passes its own state dir.
+ */
+function loadTools(userDataDir) {
+  const shipped = readJson(path.join(SHIPPED_DIR, FILENAME));
+  const overridePath = path.join(userDataDir, 'presets', FILENAME);
+  const override = readJson(overridePath);
+
+  const data = override.data || shipped.data;
+  const errors = [override.error, shipped.error].filter(Boolean);
+
+  return {
+    tools: data,
+    source: override.data ? 'userData' : 'shipped',
+    overridePath,
+    error: errors.length ? errors.join(' | ') : null,
+  };
+}
+
+exports.loadTools = loadTools;
+
 exports.register = function register(ipcMain, deps) {
   const { app } = deps;
-
-  ipcMain.handle('tools:load', () => {
-    const shipped = readJson(path.join(SHIPPED_DIR, FILENAME));
-    const overridePath = path.join(app.getPath('userData'), 'presets', FILENAME);
-    const override = readJson(overridePath);
-
-    const data = override.data || shipped.data;
-    const errors = [override.error, shipped.error].filter(Boolean);
-
-    return {
-      tools: data,
-      source: override.data ? 'userData' : 'shipped',
-      overridePath,
-      error: errors.length ? errors.join(' | ') : null,
-    };
-  });
+  ipcMain.handle('tools:load', () => loadTools(app.getPath('userData')));
 };
