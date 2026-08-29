@@ -92,6 +92,14 @@ contextBridge.exposeInMainWorld('api', {
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
   openReadme: () => ipcRenderer.invoke('app:open-readme'),
 
+  // Auto-update. checkUpdates/installUpdate take no payload — there is nothing
+  // here for a compromised renderer to inject; it can only ask "check now" or
+  // "restart into the already-downloaded build".
+  getUpdateStatus: () => ipcRenderer.invoke('app:get-update-status'),
+  checkUpdates: () => ipcRenderer.invoke('app:check-updates'),
+  installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  onUpdateStatus: (cb) => ipcRenderer.on('app:update-status', (_, data) => cb(data)),
+
   // Generation pipeline (claw-gen)
   getPipelineCliPath: () => ipcRenderer.invoke('pipeline:get-cli-path'),
   setPipelineCliPath: (cliPath) => ipcRenderer.invoke('pipeline:set-cli-path', cliPath),
