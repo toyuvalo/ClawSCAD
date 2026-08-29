@@ -3578,4 +3578,14 @@ window.api
     } catch (err) {
       console.error('[renderer] mountStudio threw', err);
     }
+    // If the studio did not mount — it threw, or its own guards bailed — the
+    // header's Make tab would be a button that visibly does nothing, which is
+    // worse than an absent feature. Remove the switch and leave the workbench
+    // as the only view, which is exactly v0.5's behaviour. Keyed on ctx.studio
+    // rather than on the throw, because a mount that returns early past a
+    // guard fails just as dead and never reaches the catch.
+    if (!ctx.studio && ctx.els.viewSwitch) {
+      ctx.els.viewSwitch.hidden = true;
+      document.body.dataset.view = 'workbench';
+    }
   });
