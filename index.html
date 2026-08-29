@@ -22,6 +22,10 @@
        matches the one its guard looks for, so the static tag wins and the
        injection no-ops. Declared here so the packaged build ships it. -->
   <link rel="stylesheet" href="./style-onboarding.css" id="style-onboarding-link">
+  <!-- v0.6 studio. Linked LAST on purpose: S2 owns #studio, #view-switch and
+       the body[data-view] switch, and equal-specificity rules must win over
+       every earlier package sheet. It may not restyle a workbench selector. -->
+  <link rel="stylesheet" href="./style-studio.css">
 </head>
 <body>
   <div id="app">
@@ -43,6 +47,15 @@
         <button class="menu-item" role="menuitem" data-action="toggle-ortho">Toggle Ortho/Perspective</button>
         <div class="menu-divider"></div>
         <button class="menu-item" role="menuitem" data-action="devtools">Developer Tools</button>
+      </div>
+      <span class="separator"></span>
+      <!-- v0.6 view switch. Two views, never modal, always reachable: Make is
+           the front door, Workbench is the viewport + checkpoints + terminal.
+           body[data-view] carries the current one so CSS can switch without
+           either view having to know about the other. -->
+      <div id="view-switch" role="tablist" aria-label="View">
+        <button id="view-studio" role="tab" aria-selected="true" aria-controls="studio">Make</button>
+        <button id="view-workbench" role="tab" aria-selected="false" aria-controls="main-content">Workbench</button>
       </div>
       <span class="separator"></span>
       <!-- .3mf first and marked default: it is the deliverable standard, and
@@ -81,6 +94,14 @@
       <button id="nudge-send" class="small-btn">Send to Claude</button>
       <button id="nudge-dismiss" class="small-btn">Dismiss</button>
     </div>
+
+    <!-- clawscad:anchor:studio — S1 (v0.6) builds the whole dashboard in here.
+         Empty and hidden until then, so its presence changes nothing on its
+         own and no existing spec sees a new visible element. Sibling of
+         #main-content rather than an overlay on top of it: a fixed overlay
+         still counts as "visible" to Playwright while silently intercepting
+         every click, which would turn thirty honest specs into liars. -->
+    <div id="studio" hidden></div>
 
     <!-- Main content area -->
     <div id="main-content">

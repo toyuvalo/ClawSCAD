@@ -139,6 +139,12 @@ contextBridge.exposeInMainWorld('api', {
   // bad user override — the shipped taxonomy is the fallback.
   categoriesLoad: () => ipcRenderer.invoke('categories:load'),
 
+  // clawscad:anchor:preload:tools — S1 (v0.6 studio). Handler lands in
+  // main/tools.js. Returns { tools, error }; never rejects for a bad user
+  // override — the shipped catalog is the fallback, and a studio with zero
+  // tools is a supported state.
+  toolsLoad: () => ipcRenderer.invoke('tools:load'),
+
   // clawscad:anchor:preload:gallery — P4. Handlers land in main/gallery.js.
   galleryList: () => ipcRenderer.invoke('gallery:list'),
   galleryListJobs: () => ipcRenderer.invoke('gallery:list-jobs'),

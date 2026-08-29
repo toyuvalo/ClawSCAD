@@ -3524,6 +3524,8 @@ ctx.els = {
   viewportsContainer: document.getElementById('viewports-container'),
   rightPanel: document.getElementById('right-panel'),
   mainContent: document.getElementById('main-content'),
+  studio: document.getElementById('studio'),
+  viewSwitch: document.getElementById('view-switch'),
 };
 
 import { mountComposer } from './renderer/composer.js';
@@ -3533,6 +3535,7 @@ import { mountGallery } from './renderer/gallery.js';
 import { mountOnboarding } from './renderer/onboarding.js';
 import { mountConfirmGate } from './renderer/confirm-gate.js';
 import { mountGuided } from './renderer/categories-ui.js';
+import { mountStudio } from './renderer/studio.js';
 mountComposer(ctx); mountUploads(ctx); mountPresets(ctx); mountGallery(ctx); mountOnboarding(ctx);
 
 // ── v0.4 guided make (docs/v04-guided-make-contracts.md) ────────────────
@@ -3559,5 +3562,20 @@ window.api
       mountGuided(ctx);
     } catch (err) {
       console.error('[renderer] mountGuided threw', err);
+    }
+    // ── v0.6 studio (docs/v06-studio-contracts.md) ──────────────────────
+    // Mounts LAST: it reads ctx.presets, ctx.confirm, ctx.guided and
+    // ctx.categories, and drives the #gen-* call sites this file owns. Its
+    // own catalog load is inside mountStudio, because a studio with zero
+    // tools is a supported state and must not delay the front door.
+    //
+    // Wrapped separately from mountGuided on purpose: a mount chain of bare
+    // statements lets one module's throw take its successors with it, which
+    // is exactly how v0.3 silently lost gallery and onboarding on every
+    // launch. One try per mount, always.
+    try {
+      mountStudio(ctx);
+    } catch (err) {
+      console.error('[renderer] mountStudio threw', err);
     }
   });

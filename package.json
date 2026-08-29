@@ -1,6 +1,6 @@
 {
   "name": "clawscad",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "AI-powered 3D CAD — OpenSCAD + Claude Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "download-openscad": "node scripts/download-openscad.js",
     "start": "npm run build:renderer && electron . --no-sandbox",
     "dev": "npm run build:renderer && electron . --dev --no-sandbox",
-    "test:harness": "node tests/error-handler-survival.js && node tests/render-fault-classify.js && node tests/preset-merge.js && node tests/route.js",
+    "test:harness": "node tests/error-handler-survival.js && node tests/render-fault-classify.js && node tests/preset-merge.js && node tests/route.js && node tests/tools.js",
     "test": "npm run build:renderer && npm run test:harness && npx playwright test",
     "test:headed": "npm run build:renderer && npx playwright test --headed",
     "pack": "npm run download-openscad && npm run build:renderer && electron-builder --dir",
@@ -86,6 +86,7 @@
       "style-onboarding.css",
       "style-categories.css",
       "style-confirm.css",
+      "style-studio.css",
       "icon.png",
       "dist/**/*",
       "main/**/*",

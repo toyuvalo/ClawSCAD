@@ -1612,6 +1612,7 @@ ipcMain.handle('pipeline:read-image', (event, filePath) => {
   require('./main/gallery.js').register(ipcMain, deps);
   require('./main/presets.js').register(ipcMain, deps);
   require('./main/categories.js').register(ipcMain, deps);
+  require('./main/tools.js').register(ipcMain, deps);
 }
 
 ipcMain.handle('app:get-version', () => APP_VERSION);
