@@ -12,6 +12,7 @@ const { _electron: electron } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { openWorkbench } = require('./helpers');
 
 const APP_PATH = path.join(__dirname, '..');
 const TEST_WORKSPACE = path.join(os.tmpdir(), 'clawscad-categories-test-' + Date.now());
@@ -41,6 +42,7 @@ async function launch() {
   const p = await app.firstWindow();
   await p.waitForLoadState('domcontentloaded');
   await p.waitForTimeout(BOOT_MS);
+  await openWorkbench(p);
   // The grid is what every test below reads, and it mounts LAST (after
   // categories:load resolves). Waiting on it here means a slow boot reads as
   // a slow boot rather than as a missing tile in whichever test ran first.

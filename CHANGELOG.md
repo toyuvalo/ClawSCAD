@@ -5,6 +5,69 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.6.0] - 2026-08-29
+
+### Added
+
+- **Studio — a new front door.** The window now has two views, switched from the
+  header: **Make** and **Workbench**. Make is a full-window dashboard — pick what
+  you're making, describe it in a sentence, press one button. Previously that
+  same flow lived in a 280 px scrolling rail wedged above the terminal, with the
+  submit button below the fold.
+- **Tools.** Thirteen switchable field groups — Dimensions, Hardware, Fit &
+  tolerance, Mounting, The part it replaces, Text & engraving, Strength,
+  Material, Print settings, Quantity, Style, Colour, Mesh detail — for saying
+  what a sentence can't carry. Picking a print type switches on the ones that
+  type usually needs; you can add or remove any of them. Each compiles into
+  three separate things: constraints Claude reads, words the image prompt gets,
+  and `claw-gen` flags. A tool that doesn't apply to what you're making says so
+  in plain words instead of greying out.
+- **A toggleable pre-image step.** *Pictures first* has three states — automatic
+  (the app decides, and tells you why), always, and never. When it's on you get
+  reference images before any mesh work, and you narrow in: **More like this**
+  adds a round, **Refine…** adds a round with a change ("bigger eyes"), and
+  earlier rounds stay on screen so you can compare. Approving a picture either
+  meshes it or hands it to Claude as a reference to build parametrically,
+  depending on what you're making.
+- **Add a picture.** Attach an image as a **reference** for Claude, or
+  **recreate** it directly as a 3D model. Recreating runs
+  `claw-gen mesh --image … --new-job` and carries on through prep to a
+  checkpoint.
+- Per-backend availability. If image generation or 3D meshing is unavailable,
+  the studio says so up front with the reason, and keeps every flow that still
+  works — rather than failing ten minutes into a job.
+
+### Fixed
+
+- **`composer-state.json` was overwritten wholesale on every write.** With a
+  second writer added this release, the composer's per-keystroke save would have
+  deleted the studio's state moments after it was written. It now merges by
+  top-level key. (An empty object still clears the file.)
+- **Refine silently did nothing** (`clawscad-gen` 0.3.0). A new round on an
+  existing job reused the job's cached expanded prompt, so a refinement was
+  accepted, took a full round to run, and produced the same thing.
+- **Every "More like this" started a new job**, whose candidate keys collide
+  with the previous job's. Rounds now accumulate in one job.
+- **An uploaded image was meshed into whatever job was last in flight**, so it
+  was checkpointed under that job's name with two subjects' files interleaved.
+  `claw-gen mesh --image` now takes `--new-job`.
+
+### Changed
+
+- **The build no longer rebuilds native modules for Electron.** `node-pty` is
+  N-API, whose ABI is stable across Node and Electron, so the `electron-rebuild`
+  postinstall was doing nothing but failing — it needed the Spectre-mitigated
+  MSVC libraries, which is what blocked `npm run release` on Windows. A new
+  `scripts/check-native-deps.js` fails the test run if a native dependency is
+  ever added that is *not* N-API, since that one would silently package a binary
+  that throws only in the installed app.
+- **CI no longer publishes releases.** The three build workflows triggered on
+  version tags and uploaded their own installer over the one `npm run release`
+  had just published — a different binary, so its hash no longer matched the
+  update manifest, permanently breaking that update for every client while the
+  release script still printed green. `scripts/release.ps1` now owns the feed
+  alone; CI builds on `main` and PRs for verification only.
+
 ## [0.5.1] - 2026-08-26
 
 ### Added

@@ -4,6 +4,7 @@ const { _electron: electron } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { openWorkbench } = require('./helpers');
 
 const APP_PATH = path.join(__dirname, '..');
 const TEST_WORKSPACE = path.join(os.tmpdir(), 'clawscad-uploads-test-' + Date.now());
@@ -110,6 +111,7 @@ test.describe('Upload & ingest', () => {
     const launched = await launch(TEST_WORKSPACE);
     electronApp = launched.app;
     page = launched.page;
+    await openWorkbench(page);
   });
 
   test.afterEach(async () => {

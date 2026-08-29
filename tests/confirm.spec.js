@@ -24,6 +24,7 @@ const { _electron: electron } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { openWorkbench } = require('./helpers');
 
 const APP_PATH = path.join(__dirname, '..');
 const TEST_WORKSPACE = path.join(os.tmpdir(), 'clawscad-confirm-test-' + Date.now());
@@ -51,6 +52,10 @@ test.beforeAll(async () => {
     throw err;
   }
   electronApp = app;
+});
+
+test.beforeEach(async () => {
+  await openWorkbench(page);
 });
 
 test.afterAll(async () => {

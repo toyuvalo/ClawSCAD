@@ -2123,17 +2123,33 @@ function setGenScore(evt) {
   badge.title = `vision critique score ${evt.score} out of 10`;
 }
 
-genGenerateBtn.addEventListener('click', async () => {
+/**
+ * One dispatcher for the images stage, used by the Generate button and by the
+ * studio's narrowing loop, so there stays exactly one `pipeline:start` call
+ * site for this action.
+ *
+ * `continueJob` is the whole difference. A fresh run clears the job and the
+ * grid; a continuation keeps both and passes `job`, which makes claw-gen append
+ * the next round (`round_num = args.round or len(rounds) + 1`) instead of
+ * starting over. Without it "More like this" produced a brand-new job whose
+ * candidate keys are `round:index` and therefore COLLIDE with the previous
+ * job's — two different images answering to `.gen-candidate[data-key="1:0"]`,
+ * with Make-3D reaching for whichever the grid happened to hold.
+ */
+async function startImageGeneration({ continueJob = false } = {}) {
   const text = genPromptEl.value.trim();
   if (!text) {
     showToast('Enter a prompt first', 'error');
-    return;
+    return { error: 'no-prompt' };
   }
-  genLogEl.innerHTML = '';
+  const continuing = continueJob && Boolean(genJob);
+  if (!continuing) {
+    genLogEl.innerHTML = '';
+    genJob = null;
+    genResetStepper();
+  }
   genSelectedKey = null;
-  genJob = null;
   genPendingStage = null;
-  genResetStepper();
   genSetStage('images', 'running');
   genStartTiming();
   genSetRunning(true);
@@ -2144,12 +2160,17 @@ genGenerateBtn.addEventListener('click', async () => {
   const backends = selectedGenBackends();
   if (backends.length) args.push('--backends', backends.join(','));
 
-  const result = await window.api.startPipeline({ action: 'images', args });
+  const result = await window.api.startPipeline(
+    continuing ? { action: 'images', args, job: genJob } : { action: 'images', args }
+  );
   if (result && result.error) {
     genSetRunning(false);
     showToast(`Generate failed: ${result.error}`, 'error');
   }
-});
+  return result;
+}
+
+genGenerateBtn.addEventListener('click', () => startImageGeneration());
 
 // Intent presets contribute CLI flags to the generated track. The presets
 // module cannot inject these itself: these stages are driven from here through
@@ -3517,6 +3538,48 @@ ctx.setExpanded = setExpanded;
 ctx.updateStatus = updateStatus;
 ctx.prettyPath = prettyPath;
 ctx.workspaceDir = workspaceDir; // may still be '' here — window.api.getWorkspace() is async and mirrors into ctx.workspaceDir once it resolves
+// ── v0.6 studio hooks into the generate pipeline ────────────────────────
+// The studio may not open a second `pipeline:start` call site for a stage this
+// file already owns (contract §S1). Rather than have it click buttons for the
+// two cases that have no button, renderer.js exposes the dispatch itself and
+// keeps ownership of genJob / genPendingStage / the stepper.
+ctx.startImageRound = () => startImageGeneration({ continueJob: true });
+
+/**
+ * Flow C: mesh a picture the user already has. There is no button for this —
+ * Make-3D always means "mesh the candidate I picked" — so without this hook the
+ * studio could start the mesh but never chain it: genPendingStage is private to
+ * this file, and it is what the pipeline:exit handler reads to run prep and
+ * then checkpoint. The mesh would finish and simply stop, leaving an .stl in a
+ * job dir and no checkpoint, which to the user looks exactly like nothing
+ * happening.
+ *
+ * Deliberately passes no `job`: `mesh --image … --new-job` creates its own,
+ * slugged from the image filename, and prep/checkpoint then default to the most
+ * recent job — which is that one.
+ */
+ctx.startMeshChain = async (args) => {
+  if (genRunning) return { error: 'already-running' };
+  genSelectedKey = null;
+  genJob = null;
+  genResetStepper();
+  genPendingStage = 'mesh';
+  genSetStage('images', 'done');
+  genSetStage('mesh', 'running');
+  genStartTiming();
+  genSetRunning(true);
+  const result = await window.api.startPipeline({
+    action: 'mesh',
+    args: [...(Array.isArray(args) ? args.map(String) : []), ...presetFlagsFor('mesh')],
+  });
+  if (result && result.error) {
+    genPendingStage = null;
+    genSetRunning(false);
+    showToast(`Mesh failed: ${result.error}`, 'error');
+  }
+  return result;
+};
+
 ctx.els = {
   composer: document.getElementById('composer'),
   gallerySheet: document.getElementById('gallery-sheet'),

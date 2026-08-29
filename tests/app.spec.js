@@ -4,6 +4,7 @@ const { _electron: electron } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { openWorkbench } = require('./helpers');
 
 const APP_PATH = path.join(__dirname, '..');
 const TEST_WORKSPACE = path.join(os.tmpdir(), 'clawscad-test-' + Date.now());
@@ -25,6 +26,7 @@ test.beforeEach(async () => {
   page = await electronApp.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(1000);
+  await openWorkbench(page);
 });
 
 test.afterEach(async () => {

@@ -4,6 +4,7 @@ const { _electron: electron } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { openWorkbench } = require('./helpers');
 
 const APP_PATH = path.join(__dirname, '..');
 const FAKE_CLI = path.join(__dirname, 'fixtures', 'fake-claw-gen.exe');
@@ -67,6 +68,7 @@ async function launchApp() {
   page = await electronApp.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(1000);
+  await openWorkbench(page);
   return page;
 }
 
@@ -81,6 +83,11 @@ test.describe('Generate Panel — empty state', () => {
     await page.evaluate(() => window.api.setPipelineCliPath(null));
     await page.reload();
     await page.waitForTimeout(1000);
+    // page.reload() re-boots the renderer, which comes back up in the v0.6
+    // default view (Make). #gen-toggle then lives inside a display:none
+    // #main-content and is never clickable, so this has to run again after
+    // every reload — launchApp()'s call only covers the first boot.
+    await openWorkbench(page);
     await page.locator('#gen-toggle').click();
   }
 
@@ -112,6 +119,11 @@ test.describe('Generate Panel — configured state', () => {
     await page.evaluate((cliPath) => window.api.setPipelineCliPath(cliPath), FAKE_CLI);
     await page.reload();
     await page.waitForTimeout(1000);
+    // page.reload() re-boots the renderer, which comes back up in the v0.6
+    // default view (Make). #gen-toggle then lives inside a display:none
+    // #main-content and is never clickable, so this has to run again after
+    // every reload — launchApp()'s call only covers the first boot.
+    await openWorkbench(page);
     await page.locator('#gen-toggle').click();
 
     await expect(page.locator('#gen-configured')).not.toHaveClass(/hidden/);
@@ -126,6 +138,11 @@ test.describe('Generate Panel — configured state', () => {
     await page.evaluate((cliPath) => window.api.setPipelineCliPath(cliPath), FAKE_CLI);
     await page.reload();
     await page.waitForTimeout(1000);
+    // page.reload() re-boots the renderer, which comes back up in the v0.6
+    // default view (Make). #gen-toggle then lives inside a display:none
+    // #main-content and is never clickable, so this has to run again after
+    // every reload — launchApp()'s call only covers the first boot.
+    await openWorkbench(page);
     await page.locator('#gen-toggle').click();
 
     await page.locator('#gen-prompt').fill('a chunky test widget');
@@ -150,6 +167,11 @@ test.describe('Generate Panel — configured state', () => {
     await page.evaluate((cliPath) => window.api.setPipelineCliPath(cliPath), FAKE_CLI);
     await page.reload();
     await page.waitForTimeout(1000);
+    // page.reload() re-boots the renderer, which comes back up in the v0.6
+    // default view (Make). #gen-toggle then lives inside a display:none
+    // #main-content and is never clickable, so this has to run again after
+    // every reload — launchApp()'s call only covers the first boot.
+    await openWorkbench(page);
     await page.locator('#gen-toggle').click();
 
     await page.locator('#gen-prompt').fill('a chunky test widget');
@@ -197,6 +219,11 @@ test.describe('Generate Panel — configured state', () => {
     await page.evaluate((cliPath) => window.api.setPipelineCliPath(cliPath), FAKE_CLI);
     await page.reload();
     await page.waitForTimeout(1000);
+    // page.reload() re-boots the renderer, which comes back up in the v0.6
+    // default view (Make). #gen-toggle then lives inside a display:none
+    // #main-content and is never clickable, so this has to run again after
+    // every reload — launchApp()'s call only covers the first boot.
+    await openWorkbench(page);
     await page.locator('#gen-toggle').click();
 
     await page.locator('#gen-prompt').fill('a widget to cancel');

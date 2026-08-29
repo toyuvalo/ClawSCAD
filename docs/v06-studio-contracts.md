@@ -363,7 +363,7 @@ Must assert: studio is the view on first run and `#main-content` is not showing 
 `#composer-prompt` is reachable in Workbench · `#studio-submit` is disabled with an empty prompt and
 says something other than its ready label · typing enables it · selecting a type auto-enables that
 type's tools as chips · adding a tool from `#studio-tools-menu` adds a `.studio-tool-panel` and a
-chip, removing it removes both · a tool with no values adds no chip · `#studio-preview-toggle`
+chip, removing it removes both · `#studio-preview-toggle`
 cycles `auto → on → off → auto` with `aria-checked` and `#studio-route` tracking · `#studio-route`
 text differs between a direct and a confirm category · state survives a relaunch (category, prompt,
 enabled tools, preview mode, view) · every studio control is **fully opaque when disabled** · no
