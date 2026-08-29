@@ -184,9 +184,21 @@ Mounted from `renderer.js` **after** the confirm gate and guided grid, so `ctx.p
 }
 ```
 
-Persisted through **`ctx.api.composerSetState`** under a `studio` key — the composer owns that file
-(v0.4 §P8) and already round-trips unknown keys. **Never** write `clawscad.json`, and never add a
-second `userData` file. `view` persists too: the app reopens where you left it.
+Persisted through **`ctx.api.composerSetState`** under a `studio` key. **Never** write
+`clawscad.json`, and never add a second `userData` file. `view` persists too: the app reopens where
+you left it.
+
+> **Correction (made during implementation).** This section originally claimed the composer "already
+> round-trips unknown keys". It did not — `composer:set-state` overwrote `composer-state.json`
+> wholesale, so the composer's own per-keystroke `persistState()` would have deleted the `studio`
+> key moments after it was written. `main/composer.js` now merges at the top level, with one
+> deliberate exception: **an empty object clears the file**, because five specs use
+> `composerSetState({})` as their `afterAll` reset and a plain merge would silently turn that into a
+> no-op. Top-level keys are replaced, not deep-merged — each owner writes its whole sub-object, and
+> a deep merge would resurrect a tool the user had just removed. Proven by `tests/composer-state.js`.
+>
+> Practical consequence for S1: **write the whole `studio` object every time**, and expect the
+> composer's keys to survive alongside it. Do not read-modify-write the file yourself.
 
 ### The routing decision
 
