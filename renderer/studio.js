@@ -2109,6 +2109,23 @@ export function mountStudio(ctx) {
     ready,
     getPreviewFirst: () => previewFirstFor(currentDecision()),
     isRestored: () => restored,
+    // Flow C's only seam. Attaching a picture normally goes through a native
+    // file dialog, which Playwright cannot drive, so without this the one flow
+    // that the whole `mesh --image --new-job` change exists for would be the
+    // only untested one. Sets exactly what ingest sets — no shortcut around
+    // uploadIngest's copy, because the spec passes an already-ingested relPath.
+    setAttachment: (att) => {
+      attachment = att && att.relPath
+        ? {
+            relPath: String(att.relPath),
+            name: String(att.name || att.relPath),
+            kind: att.kind || 'image',
+            mode: att.mode === 'recreate' ? 'recreate' : 'reference',
+          }
+        : null;
+      persist();
+      refresh();
+    },
   };
 
   // `ctx` lives inside the esbuild bundle's module scope and page.evaluate
