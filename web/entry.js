@@ -23,6 +23,7 @@
 import { ctx, notifyPipelineEvent, notifyCheckpointsChanged } from '../renderer/bus.js';
 import { mountStudio } from '../renderer/studio.js';
 import { createApiShim } from './api-shim.js';
+import { mountCustomize } from './customize.js';
 
 // ── toasts ────────────────────────────────────────────────────────────────
 // Same markup and lifetime as renderer.js:15, so style.css's .toast rules apply
@@ -234,6 +235,82 @@ ctx.els = {
   viewSwitch: document.getElementById('view-switch'),
 };
 
+// ── Flow A progress + the Customize view ─────────────────────────────────
+//
+// studio.js dispatches Flow A through ctx.api.composerSendToClaude and then
+// switches to the Workbench, which in this port is a stated-reason panel. So
+// the make's PROGRESS has to surface somewhere the user is actually looking:
+// a toast on start, and on completion a jump straight into Customize with the
+// file Claude just wrote already selected. That is the whole loop — sentence,
+// model, knobs, 3MF — without the user having to find anything.
+
+let customize = null;
+
+api.onMakeEvent((evt) => {
+  if (!evt || typeof evt !== 'object') return;
+  if (evt.event === 'start') {
+    showToast('Claude is building your model — this usually takes a minute.', 'info');
+    document.body.classList.add('is-making');
+  }
+  if (evt.event === 'timeout') {
+    showToast('That build ran past 10 minutes and was stopped.', 'error');
+  }
+  if (evt.event === 'error') {
+    document.body.classList.remove('is-making');
+    showToast(`The build failed: ${evt.reason || 'unknown error'}`, 'error');
+  }
+  if (evt.event === 'done') {
+    document.body.classList.remove('is-making');
+    if (evt.file) {
+      showToast(`Made ${evt.file} — opening Customize.`, 'success');
+      showView('customize');
+      if (customize) customize.refresh(evt.file);
+    } else {
+      // Exit code 0 with no .scad written is a real outcome and must not read
+      // as success: the user would go looking for a model that is not there.
+      showToast(
+        evt.code === 0
+          ? 'Claude finished but did not write a .scad. Try describing the part more concretely.'
+          : `The build exited ${evt.code} without writing a model.`,
+        'error',
+      );
+    }
+  }
+});
+
+api.onMakeLog((text) => {
+  String(text).split('\n').filter(Boolean).forEach((line) => console.log('[claude]', line));
+});
+
+/** The one place the three views are switched, so their [hidden] and the
+ *  tabs' aria-selected can never disagree. studio.js owns Make/Workbench for
+ *  its own two tabs; this handles Customize and keeps all three in sync. */
+function showView(name) {
+  const views = { studio: 'studio', customize: 'customize', workbench: 'main-content' };
+  for (const [key, id] of Object.entries(views)) {
+    const node = document.getElementById(id);
+    if (node) node.hidden = key !== name;
+  }
+  document.body.dataset.view = name;
+  for (const [key, tabId] of Object.entries({
+    studio: 'view-studio',
+    customize: 'view-customize',
+    workbench: 'view-workbench',
+  })) {
+    const tab = document.getElementById(tabId);
+    if (tab) tab.setAttribute('aria-selected', String(key === name));
+  }
+}
+
+document.getElementById('view-customize')?.addEventListener('click', () => {
+  showView('customize');
+  if (customize) customize.refresh(customize.getModel());
+});
+// studio.js drives its own two tabs; mirroring them here keeps Customize's
+// [hidden] correct when the user goes back.
+document.getElementById('view-studio')?.addEventListener('click', () => showView('studio'));
+document.getElementById('view-workbench')?.addEventListener('click', () => showView('workbench'));
+
 // The Workbench panel's only control. studio.js owns the view switch, and
 // ctx.studio is published at the END of mountStudio, so this reads it lazily
 // and falls back to clicking the tab if the mount has not finished yet.
@@ -267,6 +344,14 @@ api
       mountStudio(ctx);
     } catch (err) {
       console.error('[web] mountStudio threw', err);
+    }
+    // Its own try: a Customize failure must not take the Studio down with it,
+    // and vice versa. Same rule renderer.js learned when one module's throw
+    // silently killed gallery and onboarding on every launch.
+    try {
+      customize = mountCustomize(ctx, api, showToast);
+    } catch (err) {
+      console.error('[web] mountCustomize threw', err);
     }
     if (!ctx.studio) {
       // Same guard renderer.js uses: a Make tab that visibly does nothing is

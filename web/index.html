@@ -26,6 +26,7 @@
            table asks for. -->
       <div id="view-switch" role="tablist" aria-label="View">
         <button id="view-studio" role="tab" aria-selected="true" aria-controls="studio">Make</button>
+        <button id="view-customize" role="tab" aria-selected="false" aria-controls="customize">Customize</button>
         <button id="view-workbench" role="tab" aria-selected="false" aria-controls="main-content">Workbench</button>
       </div>
       <span class="separator"></span>
@@ -36,6 +37,11 @@
          until mountStudio(ctx) runs, so a failed mount shows the panel below
          rather than a blank page. -->
     <div id="studio" hidden></div>
+
+    <!-- The Customize view: pick a model, turn its OpenSCAD customizer knobs,
+         see a server-side render, download a printable 3MF. web/customize.js
+         builds all of it; empty and hidden until then. -->
+    <div id="customize" hidden></div>
 
     <!-- The Workbench, honestly. Nothing is stubbed here and nothing pretends:
          the viewport is three.js, the terminal is node-pty, the render is a

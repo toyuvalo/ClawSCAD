@@ -62,11 +62,12 @@ paths, with the reason stated on screen rather than a dead control.
 | **Flow B — pictures first** | Fully. `claw-gen images` runs on the host with `cwd` = workspace and `--json-events`; NDJSON lines are streamed to the browser over SSE. Rounds, refine and "more like this" all continue the same job. |
 | **Flow C — recreate an upload** | Fully, for images. `mesh --image <relPath> --new-job` runs and chains mesh → prep → checkpoint. |
 | **Upload** | Images only (png, jpg, webp, svg, dxf). `upload:pick` has no browser equivalent, so the shim drives a hidden `<input type=file>`; drag-and-drop goes through `upload:ingest-bytes`. Files land in `<workspace>/uploads/` via `main/uploads.js`'s own `storeUnique` (hash on collision, never overwrite) and are recorded in `uploads/uploads.json`. |
-| **Flow A — "Make it" straight to Claude** | **No.** There is no pty in a browser. `/api/composer/send-to-claude` answers `501` with a stated reason, the shim resolves `false`, and the Studio raises its own notice. It is never faked. |
-| **Workbench** | **No.** The three.js viewport, the `node-pty` terminal, the OpenSCAD render and the checkpoint tree are all absent. The Workbench tab leads to a panel naming each one. |
+| **Flow A — "Make it" straight to Claude** | **Yes** (v0.6.1). It never needed a pty: `claude -p --permission-mode acceptEdits` runs headless in the workspace and exits. Progress streams on the `make:*` SSE channel; the produced `.scad` is found by **diffing the workspace's `.scad` mtimes**, not by trusting the model to report a path. One make at a time, 10-minute ceiling, killed as a process tree on cancel. |
+| **Customize + export** | **Yes** (v0.6.1). `web/scad-params.mjs` parses OpenSCAD's own Customizer syntax; the values are applied with `-D`, which is OpenSCAD's own mechanism. Preview is a server-side PNG, so it cannot drift from the artifact the way a client-side re-mesh could. **3MF** is the primary export (STL secondary). |
+| **Workbench** | **No.** The three.js viewport, the `node-pty` terminal and the checkpoint tree are absent. The Workbench tab leads to a panel naming each one. (OpenSCAD *rendering* now exists — for Customize — but not the interactive viewport.) |
 | **Opening a checkpoint** | **No.** `clawscad.json` is read (so "pick up where you left off" lists real work) but never written, and selecting one explains that it needs the desktop app. |
 | **Locate claw-gen…** | **No.** A browser cannot browse the server's filesystem, and exposing a remote file picker behind a tunnel would be a bad idea. Set `CLAWSCAD_CLI` instead. |
-| **Editing / exporting / rendering** | **No.** Those are workbench features. |
+| **Editing the `.scad`** | **No, deliberately.** Customize never rewrites the file — every value goes through `-D`. Each `.scad` is an immutable checkpoint, and a UI that edited them to "customize" would be the easiest possible way to break that promise. |
 
 ## Notes for whoever touches this next
 

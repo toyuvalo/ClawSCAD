@@ -36,6 +36,17 @@ const { loadCategories } = require('../main/categories.js');
 const { mergeState } = require('../main/composer.js');
 const { _internal: uploadInternals } = require('../main/uploads.js');
 
+// scad-params.js is an ES module because the BROWSER bundle imports it too —
+// one parser, not a server copy and a client copy that drift. This server is
+// CommonJS, so it is loaded once via dynamic import at boot (before listen)
+// and the two functions are cached here.
+let parseScadParams = () => ({ parameters: [], sections: [], skipped: [] });
+let buildDefineArgs = () => [];
+const scadParamsReady = import('./scad-params.mjs').then((m) => {
+  parseScadParams = m.parse;
+  buildDefineArgs = m.defineArgs;
+});
+
 const APP_ROOT = path.resolve(__dirname, '..');
 const WEB_ROOT = __dirname;
 const PKG_VERSION = readVersion();
@@ -481,6 +492,288 @@ function ingestImageBytes(buffer, rawName) {
   return { ok: true, class: 'image', name, ext, relPath, dedup: stored.dedup, warnings };
 }
 
+// ── Flow A: headless Claude ───────────────────────────────────────────────
+//
+// The desktop app writes the brief into a live Claude Code pty. There is no pty
+// in a browser — but Flow A never actually needed one. `claude -p` is print
+// mode: it runs headless, does the work, and exits. That is the whole fix.
+//
+// --permission-mode acceptEdits is load-bearing. A headless run that hits a
+// permission prompt has no one to answer it and blocks until the timeout, which
+// to the user is indistinguishable from a hang. acceptEdits lets it write the
+// .scad it was asked for without opening the door to everything else.
+
+let makeChild = null;
+let makeStartedAt = 0;
+const MAKE_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Snapshot every .scad in the workspace with its mtime + size. */
+function scadSnapshot() {
+  const out = new Map();
+  try {
+    for (const name of fs.readdirSync(WORKSPACE)) {
+      if (!name.toLowerCase().endsWith('.scad')) continue;
+      try {
+        const st = fs.statSync(path.join(WORKSPACE, name));
+        out.set(name, `${st.mtimeMs}:${st.size}`);
+      } catch {}
+    }
+  } catch {}
+  return out;
+}
+
+/** What changed between two snapshots — new files first, then modified. */
+function scadDelta(before, after) {
+  const created = [];
+  const modified = [];
+  for (const [name, sig] of after) {
+    if (!before.has(name)) created.push(name);
+    else if (before.get(name) !== sig) modified.push(name);
+  }
+  return { created, modified };
+}
+
+function killTree(child) {
+  if (!child || child.killed) return;
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      process.kill(-child.pid, 'SIGKILL');
+    }
+  } catch {
+    try {
+      child.kill('SIGKILL');
+    } catch {}
+  }
+}
+
+function startMake({ brief } = {}) {
+  if (makeChild) return { error: 'already-running', startedAt: makeStartedAt };
+  const text = typeof brief === 'string' ? brief.trim() : '';
+  if (!text) return { error: 'no-brief' };
+
+  const claude = resolveClaude();
+  if (!claude) {
+    return {
+      error: 'not-configured',
+      reason: 'The Claude Code CLI was not found on this machine, so nothing can build the model.',
+    };
+  }
+
+  const before = scadSnapshot();
+  const startedAt = Date.now();
+  makeStartedAt = startedAt;
+
+  let child;
+  try {
+    child = spawn(claude, ['-p', text, '--permission-mode', 'acceptEdits', '--output-format', 'text'], {
+      cwd: WORKSPACE,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // Windows has no process groups to signal; killTree shells out instead.
+      detached: process.platform !== 'win32',
+    });
+  } catch (err) {
+    return { error: 'spawn-failed', reason: String((err && err.message) || err) };
+  }
+
+  makeChild = child;
+  sseSend('make:event', { event: 'start', startedAt });
+
+  child.stdout.on('data', (c) => sseSend('make:log', c.toString()));
+  child.stderr.on('data', (c) => sseSend('make:log', c.toString()));
+
+  const timer = setTimeout(() => {
+    sseSend('make:event', { event: 'timeout', elapsedMs: Date.now() - startedAt });
+    killTree(child);
+  }, MAKE_TIMEOUT_MS);
+  timer.unref?.();
+
+  const finish = (code) => {
+    clearTimeout(timer);
+    makeChild = null;
+    // Do NOT trust the model to report a path — diff the directory.
+    const delta = scadDelta(before, scadSnapshot());
+    const file = delta.created[0] || delta.modified[0] || null;
+    sseSend('make:event', {
+      event: 'done',
+      code,
+      elapsedMs: Date.now() - startedAt,
+      file,
+      created: delta.created,
+      modified: delta.modified,
+    });
+  };
+
+  child.on('error', (err) => {
+    clearTimeout(timer);
+    makeChild = null;
+    sseSend('make:event', { event: 'error', reason: String((err && err.message) || err) });
+  });
+  child.on('exit', finish);
+
+  return { started: true, startedAt };
+}
+
+// ── models: list, params, render, export ──────────────────────────────────
+
+const OPENSCAD_EXPORT = new Map([
+  ['3mf', { ext: '.3mf', mime: 'model/3mf' }],
+  ['stl', { ext: '.stl', mime: 'model/stl' }],
+  ['png', { ext: '.png', mime: 'image/png' }],
+]);
+
+function resolveOpenscad() {
+  const explicit = args.openscad || process.env.OPENSCAD_BINARY;
+  if (explicit && fs.existsSync(explicit)) return explicit;
+  const guesses =
+    process.platform === 'win32'
+      ? [
+          'C:\\Program Files\\OpenSCAD (Nightly)\\openscad.com',
+          'C:\\Program Files\\OpenSCAD\\openscad.com',
+          'C:\\Program Files\\OpenSCAD\\openscad.exe',
+        ]
+      : ['/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD', '/usr/bin/openscad', '/usr/local/bin/openscad'];
+  for (const g of guesses) {
+    try {
+      if (fs.existsSync(g)) return g;
+    } catch {}
+  }
+  return findOnPath('openscad');
+}
+
+/** Every .scad in the workspace, newest first — so a model made a minute ago
+ *  is the first thing offered. `active.scad` is excluded: it is a COPY the
+ *  desktop app maintains, not a model in its own right. */
+function listModels() {
+  const out = [];
+  try {
+    for (const name of fs.readdirSync(WORKSPACE)) {
+      if (!name.toLowerCase().endsWith('.scad')) continue;
+      if (name.toLowerCase() === 'active.scad') continue;
+      try {
+        const st = fs.statSync(path.join(WORKSPACE, name));
+        out.push({ file: name, bytes: st.size, modified: st.mtimeMs });
+      } catch {}
+    }
+  } catch {}
+  out.sort((a, b) => b.modified - a.modified);
+  return out;
+}
+
+/** Run OpenSCAD to `outPath` with `-D` overrides. Resolves { ok, error }. */
+function runOpenscad({ scadPath, outPath, defines, extraArgs = [] }) {
+  return new Promise((resolve) => {
+    const bin = resolveOpenscad();
+    if (!bin) {
+      return resolve({
+        ok: false,
+        error:
+          'OpenSCAD was not found on this machine, so nothing can render or export. ' +
+          'Install it, or start the server with --openscad <path>.',
+      });
+    }
+    const argv = ['-o', outPath, ...extraArgs, ...defines, scadPath];
+    let child;
+    try {
+      child = spawn(bin, argv, { cwd: WORKSPACE, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (err) {
+      return resolve({ ok: false, error: String((err && err.message) || err) });
+    }
+    let stderr = '';
+    child.stderr.on('data', (c) => {
+      if (stderr.length < 8000) stderr += c.toString();
+    });
+    child.stdout.on('data', () => {});
+    const timer = setTimeout(() => killTree(child), 5 * 60 * 1000);
+    timer.unref?.();
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: String((err && err.message) || err) });
+    });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      // OpenSCAD can exit 0 having written nothing (an empty top-level), so the
+      // artifact is what decides success, not the code. Same rule the desktop
+      // app learned: assert the artifact.
+      let exists = false;
+      let size = 0;
+      try {
+        const st = fs.statSync(outPath);
+        exists = st.isFile();
+        size = st.size;
+      } catch {}
+      if (!exists || size === 0) {
+        return resolve({
+          ok: false,
+          code,
+          error: stderr.trim() || `OpenSCAD exited ${code} without producing a file.`,
+        });
+      }
+      resolve({ ok: true, code, size, warnings: stderr.trim() || null });
+    });
+  });
+}
+
+/** Read a model's source and parse its customizer parameters. */
+function modelParams(file) {
+  const resolved = containedInWorkspace(file);
+  if (!resolved || !resolved.toLowerCase().endsWith('.scad')) {
+    return { ok: false, error: 'That is not a .scad file inside this workspace.' };
+  }
+  let src;
+  try {
+    src = fs.readFileSync(resolved, 'utf-8');
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+  const parsed = parseScadParams(src);
+  return { ok: true, file: path.relative(WORKSPACE, resolved).replace(/\\/g, '/'), ...parsed };
+}
+
+/** Where renders land. Inside the workspace on purpose: the containment check
+ *  is the security boundary and a temp dir outside it could not be served. */
+function renderDir() {
+  const dir = path.join(WORKSPACE, 'renders', 'web');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {}
+  return dir;
+}
+
+async function renderModel({ file, values, format }) {
+  const info = modelParams(file);
+  if (!info.ok) return info;
+  const fmt = OPENSCAD_EXPORT.get(String(format || 'png').toLowerCase());
+  if (!fmt) return { ok: false, error: `Unsupported format: ${format}` };
+
+  const scadPath = containedInWorkspace(file);
+  const base = path.basename(scadPath, path.extname(scadPath));
+  // One output per {model, format} — a preview overwrites its predecessor
+  // rather than filling the disk with every keystroke's render.
+  const outPath = path.join(renderDir(), `${base}${fmt.ext}`);
+
+  const defines = buildDefineArgs(info.parameters, values || {});
+  const extra = [];
+  if (fmt.ext === '.png') {
+    extra.push('--imgsize=900,700', '--colorscheme=Tomorrow Night', '--viewall', '--autocenter');
+  } else {
+    // Manifold is dramatically faster and is what the desktop export uses.
+    extra.push('--backend=Manifold');
+    if (fmt.ext === '.3mf') extra.push('--export-format', '3mf');
+  }
+
+  const result = await runOpenscad({ scadPath, outPath, defines, extraArgs: extra });
+  if (!result.ok) return { ok: false, error: result.error, code: result.code };
+  return {
+    ok: true,
+    path: path.relative(WORKSPACE, outPath).replace(/\\/g, '/'),
+    bytes: result.size,
+    warnings: result.warnings,
+    defines: defines.filter((a) => a !== '-D'),
+  };
+}
+
 // ── http helpers ──────────────────────────────────────────────────────────
 
 function sendJson(res, status, body) {
@@ -618,21 +911,85 @@ async function route(req, res, url) {
     return sendJson(res, 200, writeState(mergeState(readState(), body)));
   }
 
-  // ── composer:send-to-claude — the one thing this port cannot do ─────────
+  // ── composer:send-to-claude — Flow A, headless ──────────────────────────
+  // This used to 501 ("no pty in a browser"). It never needed one: `claude -p`
+  // runs headless and exits. The Studio's normal Flow A path now fires here.
   if (p === '/api/composer/send-to-claude' && method === 'POST') {
-    await readJsonBody(req).catch(() => ({}));
-    // 501, and `ok:false`. There is no pty in a browser: the desktop app writes
-    // the brief into a live Claude Code session's stdin through node-pty, and
-    // there is nothing here to write to. Faking success would send the user to
-    // a Workbench that never receives the message — so this fails loudly and
-    // lets the Studio's own degradation path (a notice plus a toast) fire.
-    return sendJson(res, 501, {
-      ok: false,
-      reason:
-        'Sending a brief to Claude needs the live Claude Code terminal, which only exists in the ' +
-        'desktop app — there is no pty in a browser. Copy the brief and paste it into Claude Code, ' +
-        'or open this workspace in ClawSCAD on the desktop.',
+    const body = await readJsonBody(req).catch(() => ({}));
+    const brief = body && (body.message || body.brief);
+    const started = startMake({ brief });
+    if (started.error) {
+      const status = started.error === 'already-running' ? 409 : started.error === 'no-brief' ? 400 : 503;
+      return sendJson(res, status, { ok: false, ...started });
+    }
+    return sendJson(res, 200, { ok: true, ...started });
+  }
+
+  if (p === '/api/make/cancel' && method === 'POST') {
+    if (!makeChild) return sendJson(res, 200, { ok: false, reason: 'nothing running' });
+    killTree(makeChild);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (p === '/api/make/status' && method === 'GET') {
+    return sendJson(res, 200, {
+      running: Boolean(makeChild),
+      startedAt: makeChild ? makeStartedAt : null,
+      claude: resolveClaude(),
     });
+  }
+
+  // ── models: list / params / render / export ─────────────────────────────
+  if (p === '/api/models' && method === 'GET') return sendJson(res, 200, { models: listModels() });
+
+  if (p === '/api/model/params' && method === 'GET') {
+    const info = modelParams(url.searchParams.get('file') || '');
+    return sendJson(res, info.ok ? 200 : 400, info);
+  }
+
+  if (p === '/api/model/source' && method === 'GET') {
+    const resolved = containedInWorkspace(url.searchParams.get('file') || '');
+    if (!resolved || !resolved.toLowerCase().endsWith('.scad')) {
+      return sendJson(res, 403, { ok: false, error: 'outside the workspace' });
+    }
+    try {
+      return sendJson(res, 200, { ok: true, source: fs.readFileSync(resolved, 'utf-8') });
+    } catch (err) {
+      return sendJson(res, 404, { ok: false, error: String((err && err.message) || err) });
+    }
+  }
+
+  if ((p === '/api/model/preview' || p === '/api/model/export') && method === 'POST') {
+    const body = (await readJsonBody(req).catch(() => ({}))) || {};
+    const format = p.endsWith('preview') ? 'png' : String(body.format || '3mf').toLowerCase();
+    const out = await renderModel({ file: body.file, values: body.values, format });
+    return sendJson(res, out.ok ? 200 : 400, out);
+  }
+
+  // Serve a rendered artifact for download. Same containment check as images —
+  // this is a file read driven by a query parameter and gets no exemption.
+  if (p === '/api/model/download' && (method === 'GET' || method === 'HEAD')) {
+    const requested = url.searchParams.get('path') || '';
+    const resolved = containedInWorkspace(requested);
+    if (!resolved) return sendJson(res, 403, { error: 'outside the workspace' });
+    const ext = path.extname(resolved).toLowerCase();
+    const kind = [...OPENSCAD_EXPORT.values()].find((v) => v.ext === ext);
+    if (!kind) return sendJson(res, 415, { error: `not a downloadable artifact: ${ext}` });
+    let st;
+    try {
+      st = fs.statSync(resolved);
+      if (!st.isFile()) throw new Error('not a file');
+    } catch {
+      return sendJson(res, 404, { error: 'not found' });
+    }
+    res.writeHead(200, {
+      'Content-Type': kind.mime,
+      'Content-Length': st.size,
+      'Content-Disposition': `attachment; filename="${path.basename(resolved)}"`,
+      'Cache-Control': 'no-store',
+    });
+    if (method === 'HEAD') return res.end();
+    return fs.createReadStream(resolved).pipe(res);
   }
 
   // ── pipeline ────────────────────────────────────────────────────────────
@@ -744,12 +1101,20 @@ if (require.main === module) {
     process.exit(1);
   }
   fs.mkdirSync(STATE_DIR, { recursive: true });
-  server.listen(PORT, HOST, () => {
-    console.log(`[web] ClawSCAD Studio ${PKG_VERSION} — http://${HOST}:${PORT}`);
-    console.log(`[web] workspace: ${WORKSPACE}`);
-    console.log(`[web] state dir: ${STATE_DIR}`);
-    console.log(`[web] claw-gen:  ${resolvePipelineCli() || '(not found — Preview and Recreate will explain and offer Direct)'}`);
-  });
+  // Wait for the ESM parser before accepting a request, so /api/model/params
+  // can never answer "no parameters" merely because it was asked too early.
+  scadParamsReady
+    .catch((err) => console.error('[web] scad-params failed to load — Customize will be empty:', err.message))
+    .then(() => {
+      server.listen(PORT, HOST, () => {
+        console.log(`[web] ClawSCAD Studio ${PKG_VERSION} — http://${HOST}:${PORT}`);
+        console.log(`[web] workspace: ${WORKSPACE}`);
+        console.log(`[web] state dir: ${STATE_DIR}`);
+        console.log(`[web] claw-gen:  ${resolvePipelineCli() || '(not found — Preview and Recreate will explain and offer Direct)'}`);
+        console.log(`[web] claude:    ${resolveClaude() || '(not found — Make it will explain)'}`);
+        console.log(`[web] openscad:  ${resolveOpenscad() || '(not found — Customize and Export will explain)'}`);
+      });
+    });
 }
 
 module.exports = { server, containedInWorkspace, ingestImageBytes, startPipelineAction, WORKSPACE, STATE_DIR, PORT };

@@ -37,6 +37,8 @@ export function createApiShim(opts = {}) {
   const pipelineSubs = [];
   const logSubs = [];
   const exitSubs = [];
+  const makeSubs = [];
+  const makeLogSubs = [];
 
   // Results of a picker choice, keyed by the token uploadPick() hands back. The
   // Studio's flow C is `uploadPick() -> [paths]` then `uploadIngest(paths[0])`,
@@ -90,21 +92,43 @@ export function createApiShim(opts = {}) {
      * reason and offers the routes that still work. Resolving `true` would send
      * the user to a Workbench that never received anything.
      */
+    // Flow A. This used to resolve `false` with a "no pty in a browser"
+    // reason — but Flow A never needed a pty. `claude -p` runs headless on the
+    // server and exits; the .scad it writes is found by diffing the workspace,
+    // not by trusting the model to report a path. Resolving TRUE here is what
+    // makes the Studio's normal Flow A path fire instead of its degradation.
     composerSendToClaude: async (message) => {
       const res = await json('/api/composer/send-to-claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: String(message == null ? '' : message) }),
       });
-      // The endpoint answers 501, which is the correct HTTP semantic and which
-      // the browser also logs as a red "failed to load resource" line. Say next
-      // to it what that 501 means, so nobody debugs a deliberate refusal.
-      if (res && res.reason) {
-        console.info('[web-api] composer:send-to-claude is unavailable by design —', res.reason);
-        onUnsupported(res.reason);
-      }
+      if (res && res.ok) return true;
+      const reason =
+        (res && (res.reason || res.error)) || 'Could not start the build.';
+      console.info('[web-api] composer:send-to-claude refused —', reason);
+      onUnsupported(reason);
       return false;
     },
+
+    cancelMake: () => json('/api/make/cancel', { method: 'POST' }),
+    makeStatus: () => json('/api/make/status'),
+
+    // ── models: customize + export ────────────────────────────────────────
+    listModels: () => json('/api/models'),
+    modelParams: (file) => json(`/api/model/params?file=${encodeURIComponent(file)}`),
+    renderPreview: (file, values) =>
+      json('/api/model/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file, values }),
+      }),
+    exportModel: (file, values, format) =>
+      json('/api/model/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file, values, format }),
+      }),
 
     // ── pipeline ──────────────────────────────────────────────────────────
     getPipelineBackends: () => json('/api/pipeline/backends'),
@@ -261,6 +285,13 @@ export function createApiShim(opts = {}) {
       onUnsupported('The setup guide is in the repository README on the machine hosting this server.');
       return false;
     },
+
+    onMakeEvent: (cb) => {
+      if (typeof cb === 'function') makeSubs.push(cb);
+    },
+    onMakeLog: (cb) => {
+      if (typeof cb === 'function') makeLogSubs.push(cb);
+    },
   };
 
   /**
@@ -285,7 +316,11 @@ export function createApiShim(opts = {}) {
             ? logSubs
             : envelope.channel === 'pipeline:exit'
               ? exitSubs
-              : null;
+              : envelope.channel === 'make:event'
+                ? makeSubs
+                : envelope.channel === 'make:log'
+                  ? makeLogSubs
+                  : null;
       if (!subs) return;
       for (const cb of subs) {
         try {
@@ -295,6 +330,11 @@ export function createApiShim(opts = {}) {
         }
       }
     };
+    // Flow A + Customize live on the same stream. `make:*` is a separate
+    // channel from `pipeline:*` because a headless Claude run and a claw-gen
+    // run are different jobs with different lifecycles, and collapsing them
+    // would make one look like the other in the Studio's stepper.
+    source.addEventListener('message', () => {});
     source.onerror = () => {
       // EventSource retries by itself (the server sends `retry: 3000`); logging
       // once per drop is enough and a toast per blip would be noise.
