@@ -1,6 +1,6 @@
 {
   "name": "gemscad",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AI-powered 3D CAD — OpenSCAD + Gemini Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
@@ -29,12 +29,12 @@
     "three": "^0.170.0"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.6.0",
+    "@electron/rebuild": "^4.2.0",
     "@playwright/test": "^1.58.2",
-    "electron": "^33.0.0",
-    "electron-builder": "^26.8.1",
+    "electron": "^44.1.0",
+    "electron-builder": "^26.15.3",
     "electron-playwright-helpers": "^2.1.0",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.28.2"
   },
   "build": {
     "appId": "com.gemscad.app",
