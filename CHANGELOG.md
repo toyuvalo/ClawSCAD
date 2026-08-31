@@ -5,6 +5,47 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.6.2] - 2026-08-31
+
+### Fixed
+
+- **A closed tab no longer strands a finished mesh (web port).** Turning a
+  picture into a 3D model runs three stages — mesh, prep, checkpoint — and until
+  now the *browser* was what started each one after the last. Close the tab (or
+  lose the connection) during the ten-minute mesh and the run simply stopped:
+  the mesh finished, sat on disk, and never became a checkpoint, with nothing on
+  screen to say why. It looked exactly like nothing had happened. The server now
+  runs the whole chain itself and finishes it whether or not anyone is still
+  watching.
+- **Re-opening the page mid-run shows the run.** A tab that opens while a
+  generation is in flight now says so and keeps its controls locked, instead of
+  looking idle and answering the next click with "already running".
+- A stage that fails, or a run you cancel, stops the whole chain — prep no
+  longer runs against a mesh that was never written, which used to bury the real
+  error under a second, worse one.
+
+## [0.6.1] - 2026-08-30
+
+### Added
+
+- **"Make it" works in the browser.** Describing a part in a sentence now
+  produces a real `.scad` from the web port, not a "not supported here" notice —
+  Claude runs headless on the host and the file it wrote is found by looking at
+  the workspace, not by taking the model's word for it.
+- **Customize and export, in the browser.** Any model's parameters appear as
+  knobs, and the preview you see is rendered by the same OpenSCAD that produces
+  the download, so it cannot drift from what you get. **3MF** is the primary
+  export (STL secondary), measured in real millimetres.
+- **Self-hosting.** The Studio can run as a server behind Cloudflare Access —
+  `web/README.md` has the whole story.
+
+### Fixed
+
+- Customize showed **zero parameters for every model** in a production install:
+  the parameter parser loaded under a newer `node` but not under the one the
+  service actually runs. It failed silently, which is the worst way for it to
+  fail.
+
 ## [0.6.0] - 2026-08-29
 
 ### Added

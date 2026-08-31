@@ -50,6 +50,13 @@ const api = createApiShim({ onUnsupported: (reason) => showToast(reason, 'info')
 
 const GEN_STAGES = ['images', 'mesh', 'prep', 'checkpoint'];
 
+// What "Make 3D" owes after the mesh. The SERVER runs these (web/server.js) —
+// this constant is the request, not the implementation. renderer.js chains the
+// same three stages itself because in Electron the window and the run share a
+// lifetime; in a tab they do not, and a closed tab used to strand a finished
+// mesh with no checkpoint.
+const MAKE3D_CHAIN = ['prep', 'checkpoint'];
+
 const genPromptEl = document.getElementById('gen-prompt');
 const genCountEl = document.getElementById('gen-count');
 const genGenerateBtn = document.getElementById('gen-generate-btn');
@@ -133,7 +140,12 @@ if (genMake3dBtn) {
     const [, index] = genSelectedKey.split(':');
     genPendingStage = 'mesh';
     genSetRunning(true);
-    const result = await api.startPipeline({ action: 'mesh', args: ['--pick', index], job: genJob });
+    const result = await api.startPipeline({
+      action: 'mesh',
+      args: ['--pick', index],
+      job: genJob,
+      chain: MAKE3D_CHAIN,
+    });
     if (result && result.error) {
       genPendingStage = null;
       genSetRunning(false);
@@ -162,31 +174,55 @@ api.onPipelineLog((text) => {
     .forEach((line) => console.log('[claw-gen]', line));
 });
 
-api.onPipelineExit(async ({ action, code }) => {
+api.onPipelineExit(async ({ action, code, chained }) => {
+  // The SERVER owns the mesh → prep → checkpoint chain now. `chained` names the
+  // stage it has ALREADY started, so this handler must start nothing — doing
+  // both would double-start every stage — and must not report the run as over.
+  //
+  // Leaving genSetRunning(false) out of this branch is the point: studio.js's
+  // watchRun() treats `#gen-generate-btn` losing `disabled` as "the run ended,
+  // for any reason", so flipping it between stages would end the Studio's
+  // progress display three stages early.
+  if (chained) {
+    genPendingStage = chained;
+    genSetRunning(true);
+    return;
+  }
+
   genSetRunning(false);
 
-  if (action === 'mesh' && genPendingStage === 'mesh' && code === 0) {
-    genPendingStage = 'prep';
-    genSetRunning(true);
-    api.startPipeline({ action: 'prep', args: [], job: genJob });
-  } else if (action === 'prep' && genPendingStage === 'prep' && code === 0) {
-    genPendingStage = 'checkpoint';
-    genSetRunning(true);
-    api.startPipeline({ action: 'checkpoint', args: [], job: genJob });
-  } else if (action === 'checkpoint' && genPendingStage === 'checkpoint') {
-    genPendingStage = null;
-    if (code === 0) {
-      showToast('3D model checkpointed', 'success');
-      // clawscad.json is only ever READ here, and there is no filesystem
-      // watcher in this port — so the registry is re-read at the one moment it
-      // is known to have changed, and the Studio's "recent" list updates.
-      refreshCheckpoints();
-    }
-  } else {
-    genPendingStage = null;
+  if (action === 'checkpoint' && genPendingStage === 'checkpoint' && code === 0) {
+    showToast('3D model checkpointed', 'success');
+    // clawscad.json is only ever READ here, and there is no filesystem watcher
+    // in this port — so the registry is re-read at the one moment it is known
+    // to have changed, and the Studio's "recent" list updates.
+    refreshCheckpoints();
   }
+  genPendingStage = null;
   if (!GEN_STAGES.includes(action)) genPendingStage = null;
 });
+
+/**
+ * A tab that opens (or re-opens) mid-run must not look idle. The server keeps
+ * running the chain with nobody listening — that is the whole fix — so without
+ * this the UI would offer "Make 3D", collect an `already-running`, and read as
+ * broken, and the checkpoint toast would never fire for a run the user started
+ * before their last refresh.
+ */
+async function syncPipelineStatus() {
+  let status = null;
+  try {
+    status = await api.getPipelineStatus();
+  } catch (err) {
+    console.error('[web] could not read pipeline status', err);
+    return;
+  }
+  if (!status || !status.running) return;
+  if (status.job) genJob = status.job;
+  genPendingStage = GEN_STAGES.includes(status.action) ? status.action : null;
+  genSetRunning(true);
+  showToast(`Still ${status.action === 'images' ? 'drawing pictures' : `running ${status.action}`} from an earlier run.`, 'info');
+}
 
 async function refreshCheckpoints() {
   try {
@@ -218,7 +254,11 @@ ctx.startMeshChain = async (args) => {
   genJob = null;
   genPendingStage = 'mesh';
   genSetRunning(true);
-  const result = await api.startPipeline({ action: 'mesh', args: Array.isArray(args) ? args.map(String) : [] });
+  const result = await api.startPipeline({
+    action: 'mesh',
+    args: Array.isArray(args) ? args.map(String) : [],
+    chain: MAKE3D_CHAIN,
+  });
   if (result && result.error) {
     genPendingStage = null;
     genSetRunning(false);
@@ -362,6 +402,7 @@ api
       if (ctx.els.viewSwitch) ctx.els.viewSwitch.hidden = true;
     }
     refreshCheckpoints();
+    syncPipelineStatus();
   });
 
 // A test seam only — the same reasoning as studio.js's window.clawscadStudio:

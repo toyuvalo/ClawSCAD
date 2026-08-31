@@ -289,27 +289,75 @@ function openStream(req, res) {
   });
 }
 
-// ── pipeline (mirrors main.js startPipelineAction) ────────────────────────
+// ── pipeline (mirrors main.js startPipelineAction, and then goes further) ──
+//
+// The desktop app chains mesh → prep → checkpoint from renderer.js, off a
+// `genPendingStage` variable that lives in the RENDERER. That survives in
+// Electron, where the renderer IS the app — close the window and there is no
+// run left to strand.
+//
+// It does not survive a browser. On 2026-08-30 a real generation finished its
+// images and a watertight 516K-vertex mesh and then stopped, `prep` and
+// `checkpoint` still pending, because the tab had closed during the ~10-minute
+// mesh and nothing was left to fire the next stage. Ten minutes of GPU work sat
+// finished on disk with no checkpoint, and nothing on screen said so.
+//
+// So the chain lives HERE. The client declares its intent once — `chain` on the
+// head stage — and the server carries it to the end whether or not anybody is
+// still listening. sseSend to zero clients is a no-op, not an error, which is
+// the whole reason this works.
 
 let pipelineChild = null;
 let pipelineJobDir = null;
+// The stage in flight and the stages still owed after it, plus the job slug
+// that ties them together. All three are per-server, like pipelineChild.
+let pipelineAction = null;
+let pipelineChain = [];
+let pipelineJob = null;
 
 function pipelineErrorEvent(stage, code, message) {
   return { v: 1, ts: new Date().toISOString(), stage, event: 'error', code, message, job: '' };
 }
 
-function startPipelineAction({ action, args: rawArgs = [], job } = {}) {
+/**
+ * `chain` arrives off the network, so it is validated rather than trusted.
+ * Bounded, unique, and never re-entering the head stage — `['mesh','mesh',…]`
+ * would otherwise be a self-restarting GPU job with no button to stop it.
+ */
+function normalizeChain(head, chain) {
+  if (chain === undefined || chain === null) return { chain: [] };
+  if (!Array.isArray(chain)) return { error: 'bad-chain' };
+  const out = chain.map(String);
+  if (out.length > PIPELINE_ACTIONS.size - 1) return { error: 'bad-chain' };
+  if (new Set(out).size !== out.length) return { error: 'bad-chain' };
+  if (out.some((a) => a === head || !PIPELINE_ACTIONS.has(a))) return { error: 'bad-chain' };
+  return { chain: out };
+}
+
+function startPipelineAction({ action, args: rawArgs = [], job, chain } = {}) {
   if (pipelineChild) return { error: 'already-running' };
   if (!PIPELINE_ACTIONS.has(action)) return { error: 'bad-action' };
   if (!Array.isArray(rawArgs)) return { error: 'bad-args' };
+  const normalized = normalizeChain(action, chain);
+  if (normalized.error) return { error: normalized.error };
 
+  pipelineChain = normalized.chain;
+  pipelineJob = job ? String(job) : null;
+  const result = spawnPipelineStage(action, rawArgs.map(String), pipelineJob);
+  // A head stage that never started owes nothing; leaving the chain armed would
+  // make the NEXT unrelated run inherit it.
+  if (result.error) pipelineChain = [];
+  return result;
+}
+
+function spawnPipelineStage(action, argsList, job) {
   const cli = resolvePipelineCli();
   if (!cli) {
     sseSend('pipeline:event', pipelineErrorEvent(action, 'not-configured', 'No generation pipeline configured'));
     return { error: 'not-configured' };
   }
 
-  const argv = [action, ...rawArgs.map(String), '--json-events'];
+  const argv = [action, ...argsList, '--json-events'];
   if (job) argv.push('--job', String(job));
 
   let child;
@@ -323,6 +371,7 @@ function startPipelineAction({ action, args: rawArgs = [], job } = {}) {
   }
 
   pipelineChild = child;
+  pipelineAction = action;
   let stdoutBuf = '';
 
   child.stdout.on('data', (chunk) => {
@@ -338,6 +387,10 @@ function startPipelineAction({ action, args: rawArgs = [], job } = {}) {
       } catch {
         continue;
       }
+      // The slug comes from the CLI's own events, never from the model or the
+      // client: a continuation stage aimed at the wrong job would prep and
+      // checkpoint somebody else's mesh.
+      if (typeof evt.job === 'string' && evt.job) pipelineJob = evt.job;
       // job dir is two levels up from img/<file> — same derivation as main.js,
       // and it is what narrows an image read below the whole workspace.
       if (evt.event === 'candidate' && typeof evt.path === 'string') {
@@ -351,16 +404,44 @@ function startPipelineAction({ action, args: rawArgs = [], job } = {}) {
 
   child.on('error', (err) => {
     pipelineChild = null;
+    pipelineAction = null;
+    pipelineChain = [];
     sseSend('pipeline:event', pipelineErrorEvent(action, 'spawn-failed', err.message));
-    sseSend('pipeline:exit', { action, code: null });
+    sseSend('pipeline:exit', { action, code: null, chained: null });
   });
 
   child.on('exit', (code) => {
     pipelineChild = null;
-    sseSend('pipeline:exit', { action, code });
+    pipelineAction = null;
+    // Only a CLEAN exit advances. A failed mesh must not be prepped: prep would
+    // run against a half-written or absent .stl and report its own, less useful
+    // error on top of the real one — and a cancelled run must stay cancelled.
+    const next = code === 0 ? pipelineChain.shift() || null : null;
+    if (!next) pipelineChain = [];
+    // `chained` is what tells a listening client the run is NOT over, so it
+    // keeps its controls locked instead of re-enabling between stages.
+    sseSend('pipeline:exit', { action, code, chained: next });
+    if (next) {
+      // Continuation stages take no positional args; the job slug is what
+      // carries the context forward.
+      const started = spawnPipelineStage(next, [], pipelineJob);
+      if (started.error) {
+        pipelineChain = [];
+        sseSend('pipeline:exit', { action: next, code: null, chained: null });
+      }
+    }
   });
 
   return { started: true };
+}
+
+function pipelineStatus() {
+  return {
+    running: Boolean(pipelineChild),
+    action: pipelineAction,
+    job: pipelineJob,
+    chain: [...pipelineChain],
+  };
 }
 
 function pipelineBackends() {
@@ -1000,8 +1081,15 @@ async function route(req, res, url) {
     return sendJson(res, 200, startPipelineAction(body || {}));
   }
 
+  if (p === '/api/pipeline/status' && method === 'GET') return sendJson(res, 200, pipelineStatus());
+
   if (p === '/api/pipeline/cancel' && method === 'POST') {
     if (!pipelineChild) return sendJson(res, 200, false);
+    // Disarm BEFORE killing. Cancel means the whole run, not just the stage in
+    // flight; a surviving chain would start prep on the mesh the user just
+    // stopped. (The exit handler also refuses to advance on a non-zero code —
+    // this is the belt to that's braces, because a kill can race a clean exit.)
+    pipelineChain = [];
     try {
       pipelineChild.kill('SIGTERM');
       return sendJson(res, 200, true);
@@ -1117,4 +1205,14 @@ if (require.main === module) {
     });
 }
 
-module.exports = { server, containedInWorkspace, ingestImageBytes, startPipelineAction, WORKSPACE, STATE_DIR, PORT };
+module.exports = {
+  server,
+  containedInWorkspace,
+  ingestImageBytes,
+  startPipelineAction,
+  normalizeChain,
+  pipelineStatus,
+  WORKSPACE,
+  STATE_DIR,
+  PORT,
+};

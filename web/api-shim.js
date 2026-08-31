@@ -143,6 +143,13 @@ export function createApiShim(opts = {}) {
     cancelPipeline: () => json('/api/pipeline/cancel', { method: 'POST' }).then((r) => r === true),
 
     /**
+     * Web-only — preload has no equivalent because Electron never needs one: in
+     * the desktop app the run and the window die together. Here the server
+     * outlives the tab, so a tab that opens mid-chain has to be able to ASK.
+     */
+    getPipelineStatus: () => json('/api/pipeline/status'),
+
+    /**
      * preload returns a `data:` URI; this returns a same-origin URL to the
      * bytes, which is strictly better here — no base64 inflation over the
      * tunnel, and the browser can cache-bust and stream it. studio.js only ever
