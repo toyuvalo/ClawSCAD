@@ -65,7 +65,7 @@ paths, with the reason stated on screen rather than a dead control.
 | **Flow A — "Make it" straight to Claude** | **Yes** (v0.6.1). It never needed a pty: `claude -p --permission-mode acceptEdits` runs headless in the workspace and exits. Progress streams on the `make:*` SSE channel; the produced `.scad` is found by **diffing the workspace's `.scad` mtimes**, not by trusting the model to report a path. One make at a time, 10-minute ceiling, killed as a process tree on cancel. |
 | **Customize + export** | **Yes** (v0.6.1). `web/scad-params.mjs` parses OpenSCAD's own Customizer syntax; the values are applied with `-D`, which is OpenSCAD's own mechanism. Preview is a server-side PNG, so it cannot drift from the artifact the way a client-side re-mesh could. **3MF** is the primary export (STL secondary). |
 | **Workbench** | **No.** The three.js viewport, the `node-pty` terminal and the checkpoint tree are absent. The Workbench tab leads to a panel naming each one. (OpenSCAD *rendering* now exists — for Customize — but not the interactive viewport.) |
-| **Opening a checkpoint** | **No.** `clawscad.json` is read (so "pick up where you left off" lists real work) but never written, and selecting one explains that it needs the desktop app. |
+| **Opening a checkpoint** | **No.** `clawscad.json` is read (so "pick up where you left off" lists real work) but never written, and selecting one explains that it needs the desktop app. The list is **reconciled in memory** (v0.6.3) — see the note below. |
 | **Locate claw-gen…** | **No.** A browser cannot browse the server's filesystem, and exposing a remote file picker behind a tunnel would be a bad idea. Set `CLAWSCAD_CLI` instead. |
 | **Editing the `.scad`** | **No, deliberately.** Customize never rewrites the file — every value goes through `-D`. Each `.scad` is an immutable checkpoint, and a UI that edited them to "customize" would be the easiest possible way to break that promise. |
 
@@ -115,6 +115,33 @@ paths, with the reason stated on screen rather than a dead control.
   end-of-run signal. `entry.js` owns their behaviour exactly as `renderer.js`
   does on the desktop. Remove one and the picture step goes silently dead. Add
   `debug-gen` to `<body>` to see the panel.
+- **The checkpoint list is reconciled IN MEMORY, and that is not a shortcut.**
+  `main.js` has `reconcileWorkspace()`, which adopts `.scad` files that exist on
+  disk but are missing from the registry; its comment explains that the watcher
+  starts `ignoreInitial: true`, so anything made while the app was closed "was
+  invisible forever". This port has no watcher *and* had no reconcile, so that
+  failure was not merely possible here — it was the **default**: `claw-gen
+  checkpoint`, which is how the server-side chain now ends, writes the `.scad`
+  and nothing writes the registry. The 2026-08-30 cheese-man sculpt sat finished
+  on disk with a 3MF and a render beside it and the browser listed nothing.
+  `reconcileCheckpoints()` adopts on read and **never writes** — `clawscad.json`
+  belongs to the desktop app (design rule 4), and a second writer on a shared
+  JSON is exactly the `composer-state.json` bug this release already paid for.
+  `tests/web-visibility.js` holds that line by comparing the file's **bytes**
+  before and after, because a reformat is still a write. Adopted ids are derived
+  from the filename (`web_adopted_…`), not random, so the list does not reorder
+  itself on every poll, and namespaced so they can never collide with the ids
+  the desktop app will eventually assign.
+- **The image gate has TWO roots, and it needs both.** `serveWorkspaceImage`
+  narrows reads to the current job dir once a job has produced a candidate —
+  keep that. But `customize.js` loads its preview from `renders/web/<model>.png`,
+  which *this server wrote*, and `pipelineJobDir` is never cleared. With one
+  root, a single image generation 403'd every Customize preview **for the life
+  of the process**, silently: the note said "Rendered" and the `<img>` stayed
+  empty. Electron gets away with the same code because its window restarts
+  constantly; this server runs for days behind a tunnel. Widened to the render
+  dir, **not** removed — there is a test that an unrelated workspace image is
+  still refused, and it is the one that fails if someone "simplifies" this.
 - **Path handling is the security boundary.** `containedInWorkspace()` resolves
   and `realpath`s both ends and compares with `path.relative` — it does not
   filter `..`, because an absolute path on another drive and a symlink out of

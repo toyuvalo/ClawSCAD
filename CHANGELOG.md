@@ -5,6 +5,22 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.6.3] - 2026-09-01
+
+### Fixed
+
+- **Work you made outside the desktop app now shows up in the browser.** A model
+  finished by the pipeline — which is what every "make this into a 3D model" run
+  now produces — wrote its file and then appeared nowhere: the recent list is
+  built from a registry only the desktop app writes. Your finished models were
+  on disk the whole time, with their printable files beside them, and the
+  browser listed nothing. It now shows what actually exists.
+- **The preview stopped appearing after you generated pictures.** Once a
+  generation had run, every rendered preview in Customize silently failed to
+  load for the rest of the day — the panel said "Rendered" and showed an empty
+  box. The preview and the pictures are now both readable, and nothing else in
+  the workspace became readable along with them.
+
 ## [0.6.2] - 2026-08-31
 
 ### Fixed

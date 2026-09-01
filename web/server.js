@@ -435,6 +435,69 @@ function spawnPipelineStage(action, argsList, job) {
   return { started: true };
 }
 
+// ── checkpoint reconcile (READ-ONLY) ──────────────────────────────────────
+//
+// main.js has reconcileWorkspace(), which adopts `.scad` files that exist on
+// disk but are missing from the registry. Its comment says why: the watcher
+// starts with `ignoreInitial: true`, so anything created while the app was
+// closed "was invisible forever", and for a tool whose whole promise is that
+// every file is a permanent checkpoint you can come back to, silently omitting
+// real work is the worst failure available.
+//
+// The web port has no watcher AND no reconcile, so the failure is not merely
+// possible here, it is the DEFAULT: `claw-gen checkpoint` — which is exactly
+// what the server-side chain now ends with — writes the .scad and nobody
+// writes the registry. The 2026-08-30 cheese-man sculpt sat finished on disk,
+// with a 3MF and a render beside it, and the browser listed nothing.
+//
+// This adopts in MEMORY and never writes. clawscad.json belongs to the desktop
+// app (design rule 4 at the top of this file), and a second writer on a shared
+// JSON is precisely the composer-state.json bug this release already paid for.
+// The desktop's own reconcile still does the durable write the next time it
+// opens; until then the browser at least tells the truth about what exists.
+const ACTIVE_FILE = 'active.scad';
+
+function reconcileCheckpoints(registered) {
+  const out = { ...registered };
+  let files;
+  try {
+    files = fs.readdirSync(WORKSPACE).filter((f) => f.endsWith('.scad') && f !== ACTIVE_FILE);
+  } catch {
+    return out;
+  }
+
+  const known = new Set(Object.values(out).map((c) => c && c.file));
+  const missing = files
+    .filter((f) => !known.has(f))
+    .map((f) => {
+      let mtime = 0;
+      try {
+        mtime = fs.statSync(path.join(WORKSPACE, f)).mtimeMs;
+      } catch {}
+      return { file: f, mtime };
+    })
+    // Oldest first, so the adopted chain reads in the order the work was done —
+    // same ordering rule as main.js, for the same reason.
+    .sort((a, b) => a.mtime - b.mtime);
+
+  for (const m of missing) {
+    // Derived from the filename, not random: this id is regenerated on every
+    // request and must be stable across them, or the recent list would reorder
+    // itself on each poll. It is namespaced so it can never collide with a
+    // real registry id, which is what the desktop app will eventually assign.
+    const id = `web_adopted_${m.file.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`;
+    out[id] = {
+      file: m.file,
+      parent: null,
+      label: path.basename(m.file, '.scad').replace(/[_-]/g, ' ').substring(0, 30),
+      // mtime, not now — an adopted file's real age is what makes the list honest.
+      created: new Date(m.mtime || Date.now()).toISOString(),
+      discovered: true,
+    };
+  }
+  return out;
+}
+
 function pipelineStatus() {
   return {
     running: Boolean(pipelineChild),
@@ -918,12 +981,23 @@ function serveWorkspaceImage(req, res, requested) {
   // Second gate, mirroring main.js: once a job dir is known, an image read is
   // narrowed to it. Workspace containment alone would let any png in the tree
   // be read; this is the same restriction the desktop app applies.
+  //
+  // It has TWO legitimate roots, not one. customize.js loads its preview from
+  // `renders/web/<model>.png`, and this server wrote that file itself — it is
+  // not a location the client chose. With only the job root, a single image
+  // generation 403'd every Customize preview for the LIFE OF THE PROCESS
+  // (`pipelineJobDir` is never cleared), and it did it silently: the note said
+  // "Rendered" and the <img> stayed empty. That is survivable in Electron,
+  // where the window is restarted constantly; this server runs for days behind
+  // a tunnel. Widened, not removed — an unrelated path in the tree is still
+  // refused, which is the property the gate exists for.
   if (pipelineJobDir) {
-    const jobDir = path.resolve(pipelineJobDir);
-    const rel = path.relative(jobDir, resolved);
-    if (rel !== '' && (rel.startsWith('..') || path.isAbsolute(rel))) {
-      return sendJson(res, 403, { error: 'outside-job-dir' });
-    }
+    const roots = [path.resolve(pipelineJobDir), path.resolve(renderDir())];
+    const insideOne = roots.some((root) => {
+      const rel = path.relative(root, resolved);
+      return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    });
+    if (!insideOne) return sendJson(res, 403, { error: 'outside-job-dir' });
   }
 
   const ext = path.extname(resolved).toLowerCase();
@@ -1122,15 +1196,14 @@ async function route(req, res, url) {
 
   // ── checkpoints (READ ONLY — clawscad.json belongs to the desktop app) ──
   if (p === '/api/checkpoints' && method === 'GET') {
+    let parsed = null;
     try {
-      const parsed = JSON.parse(fs.readFileSync(path.join(WORKSPACE, CHECKPOINT_REGISTRY), 'utf-8'));
-      return sendJson(res, 200, {
-        checkpoints: (parsed && parsed.checkpoints) || {},
-        active: (parsed && parsed.active) || null,
-      });
-    } catch {
-      return sendJson(res, 200, { checkpoints: {}, active: null });
-    }
+      parsed = JSON.parse(fs.readFileSync(path.join(WORKSPACE, CHECKPOINT_REGISTRY), 'utf-8'));
+    } catch {}
+    return sendJson(res, 200, {
+      checkpoints: reconcileCheckpoints((parsed && parsed.checkpoints) || {}),
+      active: (parsed && parsed.active) || null,
+    });
   }
 
   // ── static ──────────────────────────────────────────────────────────────
