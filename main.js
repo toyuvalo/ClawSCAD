@@ -79,7 +79,7 @@ let _manifoldSupported = null;
 function probeManifold() {
   if (_manifoldSupported !== null) return Promise.resolve(_manifoldSupported);
   return new Promise((resolve) => {
-    execFile(getOpenscadBin(), ['--help'], { timeout: 10000, env: openscadEnv() }, (err, stdout, stderr) => {
+    execFile(getOpenscadBin(), ['--help'], { timeout: 10000, env: openscadEnv(), windowsHide: true }, (err, stdout, stderr) => {
       const text = `${stdout || ''}${stderr || ''}`;
       _manifoldSupported = !err && /manifold/i.test(text);
       resolve(_manifoldSupported);
@@ -176,6 +176,9 @@ class McpClient {
       this.proc = spawn('npx', ['-y', 'openscad-mcp-server'], {
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: true,
+        // shell:true means cmd.exe, and Node leaves the console window visible
+        // by default: an npx window pops over the app on every launch.
+        windowsHide: true,
       });
     } catch (err) {
       console.error('Failed to start openscad-mcp-server:', err.message);
@@ -819,7 +822,7 @@ function processRenderQueue(ctx) {
   // silently on older binaries, where the flag is a hard argument error.
   const renderArgs = [...manifoldArgs(), '-o', outputPath, scadPath];
 
-  execFile(getOpenscadBin(), renderArgs, { timeout: 120000, env: openscadEnv() }, (err, stdout, stderr) => {
+  execFile(getOpenscadBin(), renderArgs, { timeout: 120000, env: openscadEnv(), windowsHide: true }, (err, stdout, stderr) => {
     ctx.isRendering = false;
     const fault = classifyRenderFailure(err, outputPath);
 
@@ -1257,7 +1260,7 @@ function startPipelineAction(ctx, { action, args = [], job } = {}) {
 
   let child;
   try {
-    child = spawn(cli, argv, { cwd: ctx.workspaceDir, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(cli, argv, { cwd: ctx.workspaceDir, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   } catch (err) {
     ctxSend(ctx, 'pipeline:event', pipelineErrorEvent(action, 'spawn-failed', err.message));
     return { error: err.message };
@@ -1511,7 +1514,7 @@ ipcMain.handle('pipeline:backends', (event) => {
     execFile(
       cli,
       ['backends', '--json'],
-      { cwd: ctx ? ctx.workspaceDir : undefined, timeout: 15000 },
+      { cwd: ctx ? ctx.workspaceDir : undefined, timeout: 15000, windowsHide: true },
       (err, stdout, stderr) => {
         let parsed = null;
         try {
@@ -1803,7 +1806,7 @@ ipcMain.handle('app:export', async (event, format) => {
   ctxSend(ctx, 'export:start', { format, file: cp.file, target: result.filePath });
 
   return new Promise((resolve) => {
-    execFile(getOpenscadBin(), args, { timeout: 300000, env: openscadEnv() }, (err, stdout, stderr) => {
+    execFile(getOpenscadBin(), args, { timeout: 300000, env: openscadEnv(), windowsHide: true }, (err, stdout, stderr) => {
       const payload = err
         ? { error: stderr || err.message, fault: classifyRenderFailure(err, result.filePath) }
         : { path: result.filePath };

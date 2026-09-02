@@ -364,7 +364,7 @@ function spawnPipelineStage(action, argsList, job) {
   try {
     // Array argv, never a shell string: everything in `args` came off the
     // network and a shell would make `; rm -rf` an argument value.
-    child = spawn(cli, argv, { cwd: WORKSPACE, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(cli, argv, { cwd: WORKSPACE, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   } catch (err) {
     sseSend('pipeline:event', pipelineErrorEvent(action, 'spawn-failed', err.message));
     return { error: err.message };
@@ -511,7 +511,7 @@ function pipelineBackends() {
   const cli = resolvePipelineCli();
   if (!cli) return Promise.resolve({ configured: false, state: 'not-found' });
   return new Promise((resolve) => {
-    execFile(cli, ['backends', '--json'], { cwd: WORKSPACE, timeout: 15000 }, (err, stdout, stderr) => {
+    execFile(cli, ['backends', '--json'], { cwd: WORKSPACE, timeout: 15000, windowsHide: true }, (err, stdout, stderr) => {
       let parsed = null;
       try {
         const lines = (stdout || '').trim().split('\n').filter(Boolean);
@@ -681,7 +681,7 @@ function killTree(child) {
   if (!child || child.killed) return;
   try {
     if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
     } else {
       process.kill(-child.pid, 'SIGKILL');
     }
@@ -716,6 +716,7 @@ function startMake({ brief } = {}) {
       stdio: ['ignore', 'pipe', 'pipe'],
       // Windows has no process groups to signal; killTree shells out instead.
       detached: process.platform !== 'win32',
+      windowsHide: true,
     });
   } catch (err) {
     return { error: 'spawn-failed', reason: String((err && err.message) || err) };
@@ -820,7 +821,7 @@ function runOpenscad({ scadPath, outPath, defines, extraArgs = [] }) {
     const argv = ['-o', outPath, ...extraArgs, ...defines, scadPath];
     let child;
     try {
-      child = spawn(bin, argv, { cwd: WORKSPACE, stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(bin, argv, { cwd: WORKSPACE, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     } catch (err) {
       return resolve({ ok: false, error: String((err && err.message) || err) });
     }

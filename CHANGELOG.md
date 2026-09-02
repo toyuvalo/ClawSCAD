@@ -5,6 +5,21 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.6.6] - 2026-09-02
+
+### Fixed
+
+- **No more black console window sitting on the desktop.** The Studio web server
+  runs as a scheduled task in your logged-in session, so Windows gave node.exe a
+  console window that stayed open the whole time the site was up — and nothing in
+  Task Scheduler can hide it. The task now starts through
+  `scripts/studio-web-hidden.vbs`, which launches node with a hidden window and
+  waits on it, so restart-on-failure still works exactly as before.
+- **The app no longer flashes command windows while it works.** Every helper the
+  app shells out to — the OpenSCAD binary, the generation CLI, the MCP server
+  behind `npx` — was spawned with Windows' default of a visible console. They all
+  pass `windowsHide` now.
+
 ## [0.6.4] - 2026-09-02
 
 ### Fixed
