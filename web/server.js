@@ -919,6 +919,149 @@ async function renderModel({ file, values, format }) {
   };
 }
 
+// ── the Workbench's mesh: find one, or make one ───────────────────────────
+//
+// The desktop app renders on every save through a local OpenSCAD process and
+// keeps the result beside the .scad. The browser cannot run that process, but
+// the SERVER can — it already does, for Customize — so the browser Workbench
+// asks for "a mesh for this checkpoint" and this decides how to answer:
+//
+//  1. a sibling .3mf or .stl the desktop app already wrote (free, and 3MF
+//     first because a 2.6 MB 3MF and a 109 MB STL are routinely the same
+//     model — the small one is the only one a phone can parse);
+//  2. a render this server made earlier and that is still newer than its
+//     source (the .scad is the only input, so mtime is a sufficient test);
+//  3. a fresh OpenSCAD run.
+//
+// One in-flight promise per file: two tabs, or a phone and a laptop, asking for
+// the same model must not start two five-minute renders of it.
+
+const MESH_EXTS = ['.3mf', '.stl'];
+const meshInFlight = new Map();
+
+function relToWorkspace(abs) {
+  return path.relative(WORKSPACE, abs).replace(/\\/g, '/');
+}
+
+function statFile(candidate) {
+  try {
+    const st = fs.statSync(candidate);
+    return st.isFile() && st.size > 0 ? st : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 'environment' (nothing to render WITH), 'timeout', or 'model' (the .scad
+ *  itself). Same three-way split main.js classifies render failures into, and
+ *  the Workbench says a different sentence for each. */
+function classifyMeshError(error) {
+  const text = String(error || '');
+  if (/OpenSCAD was not found/i.test(text) || /ENOENT/.test(text)) return 'environment';
+  if (/timed out|SIGTERM|killed/i.test(text)) return 'timeout';
+  return 'model';
+}
+
+async function ensureMesh(file) {
+  const scadPath = containedInWorkspace(file);
+  if (!scadPath || !scadPath.toLowerCase().endsWith('.scad')) {
+    return { ok: false, error: 'That is not a .scad file inside this workspace.', fault: 'model' };
+  }
+  const source = statFile(scadPath);
+  if (!source) return { ok: false, error: 'That model is not on disk any more.', fault: 'model' };
+
+  const dir = path.dirname(scadPath);
+  const base = path.basename(scadPath, path.extname(scadPath));
+
+  for (const ext of MESH_EXTS) {
+    const st = statFile(path.join(dir, base + ext));
+    if (st) return { ok: true, path: relToWorkspace(path.join(dir, base + ext)), format: ext.slice(1), bytes: st.size, cached: true };
+  }
+  for (const ext of MESH_EXTS) {
+    const cached = path.join(renderDir(), base + ext);
+    const st = statFile(cached);
+    if (st && st.mtimeMs >= source.mtimeMs) {
+      return { ok: true, path: relToWorkspace(cached), format: ext.slice(1), bytes: st.size, cached: true };
+    }
+  }
+
+  const key = scadPath.toLowerCase();
+  if (meshInFlight.has(key)) return meshInFlight.get(key);
+
+  const job = (async () => {
+    sseSend('render:event', { event: 'start', file: relToWorkspace(scadPath) });
+    // 3MF first for the same reason as above; STL is the fallback because some
+    // OpenSCAD builds refuse `--export-format 3mf` outright, and a model the
+    // user can see as a big STL beats a stated reason.
+    let last = null;
+    for (const ext of MESH_EXTS) {
+      const outPath = path.join(renderDir(), base + ext);
+      const extra = ['--backend=Manifold'];
+      if (ext === '.3mf') extra.push('--export-format', '3mf');
+      const result = await runOpenscad({ scadPath, outPath, defines: [], extraArgs: extra });
+      if (result.ok) {
+        const out = { ok: true, path: relToWorkspace(outPath), format: ext.slice(1), bytes: result.size, cached: false };
+        sseSend('render:event', { event: 'complete', file: relToWorkspace(scadPath), format: out.format, bytes: out.bytes });
+        return out;
+      }
+      last = result;
+      if (classifyMeshError(result.error) !== 'model') break; // no binary / timeout: a second attempt cannot help
+    }
+    const fault = classifyMeshError(last && last.error);
+    const out = { ok: false, error: (last && last.error) || 'OpenSCAD produced nothing.', fault };
+    sseSend('render:event', { event: 'error', file: relToWorkspace(scadPath), error: out.error, fault });
+    return out;
+  })();
+
+  meshInFlight.set(key, job);
+  try {
+    return await job;
+  } finally {
+    meshInFlight.delete(key);
+  }
+}
+
+/** The registry id the browser holds → the file it names. The Studio's recent
+ *  list passes an id and nothing else (studio.js:1836), and the reconciled view
+ *  is the only place an adopted `web_adopted_*` id exists at all. */
+function checkpointFileForId(id) {
+  if (typeof id !== 'string' || !id) return null;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(fs.readFileSync(path.join(WORKSPACE, CHECKPOINT_REGISTRY), 'utf-8'));
+  } catch {}
+  const all = reconcileCheckpoints((parsed && parsed.checkpoints) || {});
+  const entry = all[id];
+  return entry && typeof entry.file === 'string' ? entry.file : null;
+}
+
+/**
+ * Copy a checkpoint's .scad over `active.scad`, which is what "open this one"
+ * means to everything else in the workspace: it is the file CLAUDE.md points
+ * Claude at. It is deliberately NOT a registry write — clawscad.json stays the
+ * desktop app's file (design rule 4) — and the desktop watcher ignores
+ * active.scad, so this cannot bounce back as a phantom checkpoint.
+ */
+function selectCheckpoint({ id, file }) {
+  const wanted = (typeof file === 'string' && file) || checkpointFileForId(id);
+  if (!wanted) return { ok: false, error: 'No checkpoint by that id.' };
+  const resolved = containedInWorkspace(wanted);
+  if (!resolved || !resolved.toLowerCase().endsWith('.scad')) {
+    return { ok: false, error: 'That is not a .scad file inside this workspace.' };
+  }
+  if (path.basename(resolved).toLowerCase() === ACTIVE_FILE) {
+    return { ok: false, error: 'active.scad is the working copy, not a checkpoint.' };
+  }
+  let source;
+  try {
+    source = fs.readFileSync(resolved, 'utf-8');
+    fs.copyFileSync(resolved, path.join(WORKSPACE, ACTIVE_FILE));
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+  return { ok: true, file: relToWorkspace(resolved), source };
+}
+
 // ── http helpers ──────────────────────────────────────────────────────────
 
 function sendJson(res, status, body) {
@@ -1041,17 +1184,21 @@ async function route(req, res, url) {
 
   // ── env:status ──────────────────────────────────────────────────────────
   if (p === '/api/env' && method === 'GET') {
+    // Honest, server-side probes — and honest is the whole point, so this has
+    // to keep up with what the port can actually do. It said `viewport:false,
+    // render:false` for a release after Customize started rendering through
+    // OpenSCAD on this very machine, and it now has a browser Workbench with a
+    // three.js viewport in it. The terminal is the one that stays false.
+    const openscad = resolveOpenscad();
     return sendJson(res, 200, {
-      // Honest, server-side probes. `openscad: null` is not a stub — there is
-      // no renderer in this port, and saying so is the point.
-      openscad: null,
+      openscad: openscad ? { binary: openscad } : null,
       claude: { binary: resolveClaude() },
       clawGen: { binary: resolvePipelineCli() },
       web: {
         terminal: false,
-        viewport: false,
-        render: false,
-        reason: 'The browser port has no pty, no three.js viewport and no OpenSCAD process.',
+        viewport: true,
+        render: Boolean(openscad),
+        reason: 'There is no terminal in the browser port — Ask Claude in the Workbench runs headless instead.',
       },
     });
   }
@@ -1205,6 +1352,41 @@ async function route(req, res, url) {
       checkpoints: reconcileCheckpoints((parsed && parsed.checkpoints) || {}),
       active: (parsed && parsed.active) || null,
     });
+  }
+
+  // ── the Workbench ───────────────────────────────────────────────────────
+  //
+  // Three routes, and between them the browser Workbench can do what the
+  // desktop one does with a checkpoint: open it, see it, and take it away.
+
+  if (p === '/api/checkpoint/select' && method === 'POST') {
+    const body = (await readJsonBody(req).catch(() => ({}))) || {};
+    const out = selectCheckpoint({ id: body.id, file: body.file });
+    return sendJson(res, out.ok ? 200 : 400, out);
+  }
+
+  if (p === '/api/checkpoint/mesh' && method === 'GET') {
+    const out = await ensureMesh(url.searchParams.get('file') || '');
+    return sendJson(res, out.ok ? 200 : 400, out);
+  }
+
+  // Inline mesh bytes, for the three.js loaders. /api/model/download stays the
+  // attachment route Customize uses; a mesh the viewport is about to parse must
+  // not arrive as a download the phone offers to save.
+  if (p === '/api/model/file' && (method === 'GET' || method === 'HEAD')) {
+    const resolved = containedInWorkspace(url.searchParams.get('path') || '');
+    if (!resolved) return sendJson(res, 403, { error: 'outside the workspace' });
+    const ext = path.extname(resolved).toLowerCase();
+    if (!MESH_EXTS.includes(ext)) return sendJson(res, 415, { error: `not a mesh: ${ext}` });
+    const st = statFile(resolved);
+    if (!st) return sendJson(res, 404, { error: 'not found' });
+    res.writeHead(200, {
+      'Content-Type': ext === '.3mf' ? 'model/3mf' : 'model/stl',
+      'Content-Length': st.size,
+      'Cache-Control': 'no-store',
+    });
+    if (method === 'HEAD') return res.end();
+    return fs.createReadStream(resolved).pipe(res);
   }
 
   // ── static ──────────────────────────────────────────────────────────────

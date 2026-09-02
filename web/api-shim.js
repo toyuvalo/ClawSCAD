@@ -39,6 +39,7 @@ export function createApiShim(opts = {}) {
   const exitSubs = [];
   const makeSubs = [];
   const makeLogSubs = [];
+  const renderSubs = [];
 
   // Results of a picker choice, keyed by the token uploadPick() hands back. The
   // Studio's flow C is `uploadPick() -> [paths]` then `uploadIngest(paths[0])`,
@@ -280,12 +281,39 @@ export function createApiShim(opts = {}) {
     // ── checkpoints (read-only mirror of the desktop registry) ────────────
     getCheckpoints: () => json('/api/checkpoints').then((r) => r || { checkpoints: {}, active: null }),
 
-    selectCheckpoint: async () => {
-      onUnsupported(
-        'Opening a checkpoint needs the Workbench — the viewport, the editor and the OpenSCAD render, ' +
-          'none of which exist in the browser port. Open it in ClawSCAD on the desktop.'
-      );
+    /**
+     * Real, since the browser has a Workbench of its own. `active.scad` is the
+     * one file this port writes, and it is not the registry: clawscad.json
+     * still belongs to the desktop app. studio.js calls this with an ID alone
+     * and branches on a Promise<boolean>, so the shape is unchanged — the
+     * server resolves an ID against the reconciled list when no file is given.
+     */
+    selectCheckpoint: async (id, file) => {
+      const res = await json('/api/checkpoint/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id == null ? null : String(id), file: file || null }),
+      });
+      if (res && res.ok) return true;
+      onUnsupported((res && res.error) || 'That model could not be opened.');
       return false;
+    },
+
+    /** Ask the server for a mesh of this .scad — a sibling export if one is
+     *  there, an OpenSCAD render if not. Never rejects (rule 1). */
+    checkpointMesh: (file) =>
+      json(`/api/checkpoint/mesh?file=${encodeURIComponent(file)}`).then(
+        (r) => r || { ok: false, error: 'The server did not answer.', fault: 'environment' }
+      ),
+
+    readModelSource: (file) => json(`/api/model/source?file=${encodeURIComponent(file)}`),
+
+    /** Inline bytes for the viewport; `downloadUrl` is the attachment twin. */
+    modelFileUrl: (p) => `${base}/api/model/file?path=${encodeURIComponent(p)}`,
+    downloadUrl: (p) => `${base}/api/model/download?path=${encodeURIComponent(p)}`,
+
+    onRenderEvent: (cb) => {
+      if (typeof cb === 'function') renderSubs.push(cb);
     },
 
     openReadme: async () => {
@@ -327,7 +355,9 @@ export function createApiShim(opts = {}) {
                 ? makeSubs
                 : envelope.channel === 'make:log'
                   ? makeLogSubs
-                  : null;
+                  : envelope.channel === 'render:event'
+                    ? renderSubs
+                    : null;
       if (!subs) return;
       for (const cb of subs) {
         try {

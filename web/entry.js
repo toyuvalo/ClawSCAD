@@ -24,6 +24,7 @@ import { ctx, notifyPipelineEvent, notifyCheckpointsChanged } from '../renderer/
 import { mountStudio } from '../renderer/studio.js';
 import { createApiShim } from './api-shim.js';
 import { mountCustomize } from './customize.js';
+import { mountWorkbench } from './workbench.js';
 
 // ── toasts ────────────────────────────────────────────────────────────────
 // Same markup and lifetime as renderer.js:15, so style.css's .toast rules apply
@@ -285,9 +286,19 @@ ctx.els = {
 // model, knobs, 3MF — without the user having to find anything.
 
 let customize = null;
+let workbench = null;
 
 api.onMakeEvent((evt) => {
   if (!evt || typeof evt !== 'object') return;
+  // A build the user started IN the Workbench belongs to the Workbench: it
+  // opens the new model there and this handler stays out of the way. Only a
+  // Studio-originated make still jumps to Customize.
+  if (workbench && workbench.ownsCurrentMake()) {
+    const handled = workbench.onMakeEvent(evt);
+    if (evt.event === 'start') document.body.classList.add('is-making');
+    if (evt.event !== 'start') document.body.classList.remove('is-making');
+    if (handled) return;
+  }
   if (evt.event === 'start') {
     showToast('Claude is building your model — this usually takes a minute.', 'info');
     document.body.classList.add('is-making');
@@ -319,6 +330,7 @@ api.onMakeEvent((evt) => {
 });
 
 api.onMakeLog((text) => {
+  if (workbench) workbench.onMakeLog(text);
   String(text).split('\n').filter(Boolean).forEach((line) => console.log('[claude]', line));
 });
 
@@ -332,6 +344,9 @@ function showView(name) {
     if (node) node.hidden = key !== name;
   }
   document.body.dataset.view = name;
+  // The viewport measured 0×0 while it was display:none, so it re-measures on
+  // the way in — the same reason studio.js fires remeasureWorkbench().
+  if (name === 'workbench' && workbench) workbench.onShow();
   for (const [key, tabId] of Object.entries({
     studio: 'view-studio',
     customize: 'view-customize',
@@ -350,17 +365,6 @@ document.getElementById('view-customize')?.addEventListener('click', () => {
 // [hidden] correct when the user goes back.
 document.getElementById('view-studio')?.addEventListener('click', () => showView('studio'));
 document.getElementById('view-workbench')?.addEventListener('click', () => showView('workbench'));
-
-// The Workbench panel's only control. studio.js owns the view switch, and
-// ctx.studio is published at the END of mountStudio, so this reads it lazily
-// and falls back to clicking the tab if the mount has not finished yet.
-const backToMake = document.getElementById('web-back-to-make');
-if (backToMake) {
-  backToMake.addEventListener('click', () => {
-    if (ctx.studio && typeof ctx.studio.show === 'function') ctx.studio.show();
-    else document.getElementById('view-studio')?.click();
-  });
-}
 
 // ctx.composer / ctx.presets / ctx.guided / ctx.confirm stay null. studio.js
 // guards every one of them, and the modules behind them are workbench-only.
@@ -393,6 +397,17 @@ api
     } catch (err) {
       console.error('[web] mountCustomize threw', err);
     }
+    // Its own try, for the same reason: a three.js failure must not take the
+    // Make view down with it.
+    try {
+      workbench = mountWorkbench(ctx, api, showToast);
+    } catch (err) {
+      console.error('[web] mountWorkbench threw', err);
+    }
+    // studio.js restores a persisted view during its own mount, which happens
+    // before the Workbench exists — so a reload that lands on the Workbench
+    // gets its first measure here.
+    if (workbench && document.body.dataset.view === 'workbench') workbench.onShow();
     if (!ctx.studio) {
       // Same guard renderer.js uses: a Make tab that visibly does nothing is
       // worse than an absent feature. Here there is no workbench to fall back

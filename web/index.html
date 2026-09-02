@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- viewport-fit=cover so the app fills a notched phone. No user-scalable=no:
+       pinch-zoom stays available on the page; the 3D canvas opts out on its own
+       with touch-action:none, which is the narrow thing that actually needs it. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#10102a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>ClawSCAD Studio</title>
   <!-- The app's REAL stylesheets, served by web/server.js from the repo root.
        style.css carries the :root token layer style-studio.css is built on, so
@@ -21,9 +26,8 @@
       <span class="separator"></span>
       <!-- Both tabs, exactly as the desktop shell: studio.js binds click
            handlers to #view-studio / #view-workbench and toggles
-           body[data-view]. The Workbench tab does not lead nowhere — it leads
-           to the stated-reason panel below, which is what the §S1 degradation
-           table asks for. -->
+           body[data-view]. The Workbench tab leads to a real Workbench now —
+           web/workbench.js builds it into #main-content below. -->
       <div id="view-switch" role="tablist" aria-label="View">
         <button id="view-studio" role="tab" aria-selected="true" aria-controls="studio">Make</button>
         <button id="view-customize" role="tab" aria-selected="false" aria-controls="customize">Customize</button>
@@ -43,33 +47,12 @@
          builds all of it; empty and hidden until then. -->
     <div id="customize" hidden></div>
 
-    <!-- The Workbench, honestly. Nothing is stubbed here and nothing pretends:
-         the viewport is three.js, the terminal is node-pty, the render is a
-         local OpenSCAD process, and none of the three can exist in a browser
-         tab. Naming each one is more useful than an empty panel. -->
-    <div id="main-content" hidden>
-      <div class="web-unavailable">
-        <h2>The Workbench isn't part of the web port.</h2>
-        <p>
-          This is the <strong>Make</strong> view, self-hosted. Four things live in the desktop app and
-          have no browser equivalent, so rather than stub them they are simply absent:
-        </p>
-        <ul>
-          <li><strong>The 3D viewport</strong> — three.js rendering a mesh loaded from local disk.</li>
-          <li><strong>The terminal</strong> — a live Claude Code session over <code>node-pty</code>. This is
-            why <em>Make it</em> cannot hand a brief to Claude from here.</li>
-          <li><strong>OpenSCAD rendering</strong> — a local <code>openscad</code> process per change.</li>
-          <li><strong>The checkpoint tree</strong> — opening, branching and exporting checkpoints.</li>
-        </ul>
-        <p>
-          Everything that <em>does</em> work here works for real: the tool catalog, the routing decision,
-          reference-picture rounds, and recreating an uploaded picture — all driven by the same
-          <code>claw-gen</code> CLI on the host machine. Open the workspace in ClawSCAD on the desktop for
-          the rest.
-        </p>
-        <button id="web-back-to-make" class="small-btn" type="button">Back to Make</button>
-      </div>
-    </div>
+    <!-- The Workbench. web/workbench.js builds all of it: a three.js viewport
+         over meshes the SERVER renders with OpenSCAD, the checkpoint list, a
+         read-only source view, export, and a headless Ask Claude in place of
+         the desktop's pty terminal. Empty and hidden until then, so a failed
+         mount shows an empty view rather than a lying one. -->
+    <div id="main-content" hidden></div>
 
     <!-- Shown only if mountStudio never published ctx.studio. -->
     <div id="web-mount-failed" class="web-unavailable" hidden>

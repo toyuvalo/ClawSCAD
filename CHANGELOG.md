@@ -5,7 +5,24 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
-## [0.6.6] - 2026-09-02
+## [0.7.0] - 2026-09-02
+
+### Added
+
+- **The Workbench works in the browser now — on a phone as well as a laptop.**
+  Opening a model from clawscad.dvlce.ca used to land on a panel explaining why
+  it could not be done. It can be done: the model turns in 3D under your finger,
+  the model list is there, the source is readable, and 3MF, STL and PNG download
+  straight from it. The mesh is built on the machine hosting the site, by the
+  same OpenSCAD the desktop app uses, and a model that already has a 3MF beside
+  it is served as that — which is what makes a 100 MB model openable on a phone
+  at all. Over 40 MB on a phone it shows a picture first and asks before loading
+  the real thing.
+- **Ask Claude, in the Workbench.** There is no terminal in a browser and there
+  should not be one — it would be a shell on the studio machine behind a single
+  login. Instead, describe the change, and Claude Code runs headless on the
+  server with its log streaming into the pane; the model it writes opens right
+  there when it finishes.
 
 ### Fixed
 
