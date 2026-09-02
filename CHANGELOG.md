@@ -5,6 +5,27 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.6.4] - 2026-09-02
+
+### Fixed
+
+- **The site stopped 502ing when the wired network card dropped out.** The
+  tunnel reached this machine at its wired address, and that card is a gigabit
+  card negotiating 100 Mbps — a failing cable or port. Every time it blinked the
+  site went down with "no route to host" even though the app itself was running
+  perfectly. The tunnel now reaches the app over Tailscale, which does not care
+  which network card is up.
+
+### Added
+
+- **A watchdog that notices when the app stops answering and restarts it.**
+  Task Scheduler restarted the server when it crashed, but gave up permanently
+  after three tries, and could never see the case where the process is alive but
+  no longer serving — both of which look like a 502 to you while the task shows
+  green. `scripts/studio-web-watchdog.ps1` probes the origin every 5 minutes and
+  restarts it if three probes in a row fail. It takes three because a generation
+  holds the machine for ~10 minutes, and a restart would kill that run with it.
+
 ## [0.6.3] - 2026-09-01
 
 ### Fixed
