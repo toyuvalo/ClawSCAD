@@ -5,6 +5,18 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.7.1] - 2026-10-05
+
+### Fixed
+
+- **"Couldn't reach the Claude Code terminal" no longer appears when Claude is fine.**
+  In the browser Studio, clicking Make it while a build was still running got a
+  `409 already-running` from the server, and the Studio reported it as an
+  unreachable terminal. It now says what happened: a build is already running,
+  how long ago it started, and to wait or stop it in the Workbench. A server that
+  does not answer at all now says so, and suggests a reload in case the sign-in
+  expired.
+
 ## [0.7.0] - 2026-09-02
 
 ### Added

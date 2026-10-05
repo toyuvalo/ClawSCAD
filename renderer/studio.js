@@ -1034,6 +1034,15 @@ export function mountStudio(ctx) {
       console.error('[studio] send to Claude failed', err);
     }
     if (!ok) {
+      // The web port knows WHY it was refused (most often: a build is already
+      // running). Say that, not "couldn't reach" — the shim already toasted it.
+      const failure = api.lastSendFailure;
+      if (failure && failure.reason) {
+        notice('claude', failure.reason, [
+          { label: 'Open the Workbench', onClick: () => showView('workbench', { user: true }) },
+        ]);
+        return false;
+      }
       // The terminal may simply not be running — say which of the two it is.
       const missing = env && env.claude && !env.claude.binary;
       notice(

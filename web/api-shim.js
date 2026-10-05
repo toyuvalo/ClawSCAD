@@ -30,6 +30,31 @@ const NO_PATH_REASON =
  *        operation is attempted (checkpoint open, locate claw-gen, …). entry.js
  *        wires it to showToast so nothing is ever a silently dead button.
  */
+/**
+ * Turn a send-to-claude refusal into { code, reason } a person can act on.
+ * `res` is null when the request never got a JSON answer — a dropped
+ * connection, or an expired Cloudflare Access sign-in redirecting the call.
+ */
+export function describeSendFailure(res) {
+  if (!res) {
+    return {
+      code: 'no-answer',
+      reason: 'The ClawSCAD server did not answer. Reload the page (your sign-in may have expired) and try again.',
+    };
+  }
+  const code = res.error || 'refused';
+  if (code === 'already-running') {
+    const secs = res.startedAt ? Math.max(0, Math.round((Date.now() - res.startedAt) / 1000)) : null;
+    const age = secs == null ? '' : secs < 90 ? ` ${secs} seconds ago` : ` ${Math.round(secs / 60)} minutes ago`;
+    return {
+      code,
+      reason: `A build is already running (started${age}). Wait for it to finish, or stop it in the Workbench, then try again.`,
+    };
+  }
+  if (code === 'no-brief') return { code, reason: 'Tell me what it is first — a few words is plenty.' };
+  return { code, reason: res.reason || `The server could not start the build (${code}).` };
+}
+
 export function createApiShim(opts = {}) {
   const base = (opts.base || '').replace(/\/+$/, '');
   const onUnsupported = typeof opts.onUnsupported === 'function' ? opts.onUnsupported : () => {};
@@ -98,19 +123,26 @@ export function createApiShim(opts = {}) {
     // server and exits; the .scad it writes is found by diffing the workspace,
     // not by trusting the model to report a path. Resolving TRUE here is what
     // makes the Studio's normal Flow A path fire instead of its degradation.
+    //
+    // A refusal is NOT "couldn't reach Claude". The commonest one is a second
+    // click while the first build still runs (409 already-running), and the
+    // Studio used to report that as an unreachable terminal. The real reason is
+    // kept on `lastSendFailure` so studio.js can say what actually happened.
     composerSendToClaude: async (message) => {
+      api.lastSendFailure = null;
       const res = await json('/api/composer/send-to-claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: String(message == null ? '' : message) }),
       });
       if (res && res.ok) return true;
-      const reason =
-        (res && (res.reason || res.error)) || 'Could not start the build.';
-      console.info('[web-api] composer:send-to-claude refused —', reason);
-      onUnsupported(reason);
+      const failure = describeSendFailure(res);
+      api.lastSendFailure = failure;
+      console.info('[web-api] composer:send-to-claude refused —', failure.code, failure.reason);
+      onUnsupported(failure.reason);
       return false;
     },
+    lastSendFailure: null,
 
     cancelMake: () => json('/api/make/cancel', { method: 'POST' }),
     makeStatus: () => json('/api/make/status'),
