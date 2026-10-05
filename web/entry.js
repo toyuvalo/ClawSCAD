@@ -288,6 +288,12 @@ ctx.els = {
 let customize = null;
 let workbench = null;
 
+// A tab opened (or reloaded) mid-build missed the 'start' event, so ask once.
+// Without this its Make it button stays live and the click is refused (409).
+api.makeStatus().then((s) => {
+  if (s && s.running) document.body.classList.add('is-making');
+});
+
 api.onMakeEvent((evt) => {
   if (!evt || typeof evt !== 'object') return;
   // A build the user started IN the Workbench belongs to the Workbench: it

@@ -5,6 +5,15 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.7.2] - 2026-10-05
+
+### Fixed
+
+- **Make it is locked while a build runs.** The browser Studio now shows
+  "Building…" and disables the button until the build ends, so the click that
+  the server would refuse is never offered. A tab opened mid-build asks the
+  server once and locks as well.
+
 ## [0.7.1] - 2026-10-05
 
 ### Fixed

@@ -954,7 +954,21 @@ export function mountStudio(ctx) {
 
   // ── submit ─────────────────────────────────────────────────────────────
 
+  // The web port sets body.is-making while a server build runs, and the server
+  // refuses a second one (409). Don't offer a click that can only be refused.
+  // The desktop app never sets the class, so this is a no-op there.
+  function buildRunning() {
+    return typeof document !== 'undefined' && !!document.body && document.body.classList.contains('is-making');
+  }
+
   function refreshSubmit(decision, wantsPreview) {
+    if (buildRunning()) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Building…';
+      submitBtn.dataset.ready = 'false';
+      hintEl.textContent = 'a build is running — this unlocks when it ends';
+      return;
+    }
     const ready = promptText.trim().length > 0 || (attachment && attachment.mode === 'recreate');
     submitBtn.disabled = !ready;
     submitBtn.textContent = !ready
@@ -990,8 +1004,19 @@ export function mountStudio(ctx) {
   });
 
   submitBtn.addEventListener('click', () => {
-    submit();
+    if (!buildRunning()) submit();
   });
+
+  if (typeof MutationObserver === 'function' && typeof document !== 'undefined' && document.body) {
+    new MutationObserver(() => {
+      try {
+        const decision = currentDecision();
+        refreshSubmit(decision, previewFirstFor(decision));
+      } catch (err) {
+        console.error('[studio] submit refresh failed', err);
+      }
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  }
 
   async function submit() {
     const decision = currentDecision();
