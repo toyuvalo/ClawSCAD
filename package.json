@@ -1,6 +1,6 @@
 {
   "name": "clawscad",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "AI-powered 3D CAD — OpenSCAD + Claude Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
@@ -31,30 +31,37 @@
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
     "@playwright/test": "^1.58.2",
-    "electron": "^43.2.0",
+    "electron": "^43.5.0",
     "electron-builder": "^26.15.3",
     "electron-playwright-helpers": "^2.1.0",
     "esbuild": "^0.28.1"
   },
   "overrides": {
-    "dompurify": "^3.4.13",
+    "dompurify": "^3.4.16",
     "tar": "^7.5.18",
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^4.3.2",
     "form-data": "^4.0.6",
     "tmp": "^0.2.6",
     "@tootallnate/once": "^2.0.1",
     "ip-address": "^10.1.1",
-    "@xmldom/xmldom": "^0.8.13",
+    "@xmldom/xmldom": "^0.8.15",
     "lodash": "^4.18.0",
+    "fast-uri": "^3.1.7",
+    "@electron/get": {
+      "undici": "^7.29.1"
+    },
+    "node-gyp": {
+      "undici": "^6.29.0"
+    },
     "builder-util-runtime": "^9.7.0",
     "minimatch@3.x": {
-      "brace-expansion": "^1.1.16"
+      "brace-expansion": "^1.1.21"
     },
     "minimatch@9.x": {
-      "brace-expansion": "^2.1.2"
+      "brace-expansion": "^2.1.7"
     },
     "minimatch@10.x": {
-      "brace-expansion": "^5.0.7"
+      "brace-expansion": "^5.0.12"
     },
     "anymatch": {
       "picomatch": "^2.3.2"

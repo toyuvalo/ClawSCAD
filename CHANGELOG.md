@@ -5,6 +5,18 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.7.3] - 2026-10-06
+
+### Security
+
+- **Dependency fixes for 29 open Dependabot alerts (17 high).** `electron` 43.2.0 to
+  43.5.0 (three high Electron advisories), `js-yaml` 4.3.2 (used by the updater at
+  runtime), `@xmldom/xmldom` 0.8.15, `fast-uri` 3.1.8, and `undici` 6.29.0 / 7.30.0 (the
+  last two are build-time only). Brace-expansion and DOMPurify (npm copy) floors raised
+  in the same pass. No application code changed.
+- Still open: `braces` and `http-cache-semantics` (no upstream fix), and the DOMPurify
+  copy that monaco inlines into the renderer bundle (3.2.7; no monaco release clears it).
+
 ## [0.7.2] - 2026-10-05
 
 ### Fixed
