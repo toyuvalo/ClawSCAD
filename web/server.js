@@ -692,6 +692,17 @@ function killTree(child) {
   }
 }
 
+/** A failed make's reason: the last line Claude printed, or null when the run
+ *  succeeded, wrote a model, or printed nothing. */
+function makeFailureReason(code, file, tail) {
+  if (code === 0 || file) return null;
+  const lines = String(tail || '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return lines.length ? lines[lines.length - 1].slice(0, 300) : null;
+}
+
 function startMake({ brief } = {}) {
   if (makeChild) return { error: 'already-running', startedAt: makeStartedAt };
   const text = typeof brief === 'string' ? brief.trim() : '';
@@ -725,8 +736,17 @@ function startMake({ brief } = {}) {
   makeChild = child;
   sseSend('make:event', { event: 'start', startedAt });
 
-  child.stdout.on('data', (c) => sseSend('make:log', c.toString()));
-  child.stderr.on('data', (c) => sseSend('make:log', c.toString()));
+  // Keep the tail of the output: a failed run's last line is its reason
+  // ("You've hit your session limit · resets 5:40pm"), and the Studio view
+  // otherwise only ever shows the bare exit code.
+  let tail = '';
+  const onOutput = (c) => {
+    const s = c.toString();
+    tail = (tail + s).slice(-4096);
+    sseSend('make:log', s);
+  };
+  child.stdout.on('data', onOutput);
+  child.stderr.on('data', onOutput);
 
   const timer = setTimeout(() => {
     sseSend('make:event', { event: 'timeout', elapsedMs: Date.now() - startedAt });
@@ -743,6 +763,7 @@ function startMake({ brief } = {}) {
     sseSend('make:event', {
       event: 'done',
       code,
+      reason: makeFailureReason(code, file, tail),
       elapsedMs: Date.now() - startedAt,
       file,
       created: delta.created,
@@ -1468,6 +1489,7 @@ module.exports = {
   startPipelineAction,
   normalizeChain,
   pipelineStatus,
+  makeFailureReason,
   WORKSPACE,
   STATE_DIR,
   PORT,

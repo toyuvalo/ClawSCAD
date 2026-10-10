@@ -5,6 +5,14 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.7.4] - 2026-10-10
+
+### Fixed
+
+- **A failed build now says why.** When Claude Code stops without writing a
+  model, the Studio shows its last line (for example "You've hit your session
+  limit · resets 5:40pm") instead of only "The build exited 1".
+
 ## [0.7.3] - 2026-10-06
 
 ### Security

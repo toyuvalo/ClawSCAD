@@ -328,7 +328,9 @@ api.onMakeEvent((evt) => {
       showToast(
         evt.code === 0
           ? 'Claude finished but did not write a .scad. Try describing the part more concretely.'
-          : `The build exited ${evt.code} without writing a model.`,
+          : evt.reason
+            ? `The build stopped without writing a model. Claude said: ${evt.reason}`
+            : `The build exited ${evt.code} without writing a model.`,
         'error',
       );
     }
