@@ -1,6 +1,6 @@
 {
   "name": "clawscad",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "AI-powered 3D CAD — OpenSCAD + Claude Code with checkpoint branching",
   "main": "main.js",
   "scripts": {
@@ -31,13 +31,13 @@
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
     "@playwright/test": "^1.58.2",
-    "electron": "^43.5.0",
+    "electron": "^43.8.1",
     "electron-builder": "^26.15.3",
     "electron-playwright-helpers": "^2.1.0",
     "esbuild": "^0.28.1"
   },
   "overrides": {
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "tar": "^7.5.18",
     "js-yaml": "^4.3.2",
     "form-data": "^4.0.6",
@@ -46,12 +46,12 @@
     "ip-address": "^10.1.1",
     "@xmldom/xmldom": "^0.8.15",
     "lodash": "^4.18.0",
-    "fast-uri": "^3.1.7",
+    "fast-uri": "^3.1.9",
     "@electron/get": {
-      "undici": "^7.29.1"
+      "undici": "^7.30.1"
     },
     "node-gyp": {
-      "undici": "^6.29.0"
+      "undici": "^6.29.1"
     },
     "builder-util-runtime": "^9.7.0",
     "minimatch@3.x": {

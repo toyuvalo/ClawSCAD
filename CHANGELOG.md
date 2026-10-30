@@ -5,6 +5,16 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.7.6] - 2026-10-30
+
+### Security
+
+- **Dependency fixes for 20 open Dependabot alerts (1 critical, 6 high).**
+  `dompurify` 3.4.17 (the critical SAFE_FOR_TEMPLATES bypass; runtime, via
+  monaco), `electron` 43.8.1 floor (installs 43.8.4), and the build-time
+  `undici` 6.29.1 / 7.30.1 and `fast-uri` 3.1.9. `npm audit`: 0. No
+  application code changed.
+
 ## [0.7.5] - 2026-10-30
 
 ### Fixed
