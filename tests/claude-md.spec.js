@@ -60,6 +60,14 @@ test.describe('CLAUDE.md managed block', () => {
       expect(content).toContain('NEVER modify or overwrite');
       expect(content).toContain('Mesh-Derived Checkpoints');
       expect(content).toContain('branch');
+
+      // The tool names must be the ones openscad-mcp-server really has.
+      expect(content).toContain('`render_scad_png`');
+      expect(content).toContain('`export_scad_stl`');
+      expect(content).toContain('"${OPENSCAD_BINARY:-openscad}" -o "${TMPDIR:-/tmp}/clawscad-check.stl" --summary all --summary-file -');
+      for (const ghost of ['render_single', 'render_perspectives', 'validate_scad', 'analyze_model', 'check_openscad', 'get_libraries']) {
+        expect(content).not.toContain(ghost);
+      }
     } finally {
       await electronApp.close();
       removeWorkspace(ws);

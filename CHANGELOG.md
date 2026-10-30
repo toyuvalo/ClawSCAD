@@ -5,6 +5,21 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.7.5] - 2026-10-30
+
+### Fixed
+
+- **The workspace `CLAUDE.md` names the MCP tools that exist.** It listed six
+  tools (`render_single`, `validate_scad`, `analyze_model` and others) that
+  `openscad-mcp-server` does not have. It now names the real two,
+  `render_scad_png` and `export_scad_stl`, says what they cannot do (they run
+  OpenSCAD as WebAssembly on the text alone: `import()` fails, `include` /
+  `use` silently load nothing, no colours), and gives an OpenSCAD CLI line for
+  the bounding box.
+- **The workspace terminals export `OPENSCAD_BINARY`** (the binary ClawSCAD
+  renders with), so that CLI line works on a machine whose only OpenSCAD is
+  the bundled one.
+
 ## [0.7.4] - 2026-10-10
 
 ### Fixed

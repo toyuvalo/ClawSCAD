@@ -5,6 +5,7 @@ const os = require('os');
 const pty = require('node-pty');
 const chokidar = require('chokidar');
 const { execFile, spawn } = require('child_process');
+const { terminalEnv } = require('./main/terminal-env.js');
 
 // Single source of truth for the app version — surfaced over IPC as
 // app:get-version and sent in the MCP handshake, so neither can drift.
@@ -442,23 +443,23 @@ When the user asks to change colors, create a new file (never modify the old one
 ## Workflow
 1. Read \`active.scad\` to understand the current model
 2. Create a new .scad file building on it (never modify the original)
-3. **Use the OpenSCAD MCP server to validate your work** — this is critical:
-   - After creating a .scad file, use the MCP \`render\` tool to render it and visually inspect the result
-   - Use \`validate_scad\` to check for syntax errors before rendering
-   - Use \`analyze_model\` to check bounding box and dimensions match what the user asked for
+3. **Check your work** — this is critical:
+   - After creating a .scad file, render it with the MCP \`render_scad_png\` tool and inspect the image. Render 2-3 \`cameraPreset\` views to check it from several angles.
+   - Check the bounding box and dimensions with the OpenSCAD CLI, never by eye: \`"\${OPENSCAD_BINARY:-openscad}" -o "\${TMPDIR:-/tmp}/clawscad-check.stl" --summary all --summary-file - file.scad\` prints JSON; \`geometry.bounding_box.size\` is the size in mm. A syntax error makes it exit non-zero and names the line. (PowerShell 7: \`& ($env:OPENSCAD_BINARY ?? 'openscad') ...\`)
    - If the render shows problems, create a new fixed .scad file (still never modify the broken one)
-   - Use \`render_perspectives\` to check the model from multiple angles
 4. The app auto-detects new .scad files and adds them to the checkpoint history tree
 5. Users can click any checkpoint to go back and branch from it — every file is permanent
 
 ## MCP Tools Available
-You have access to the \`openscad\` MCP server with these tools — **use them proactively**:
-- \`render_single\` / \`render_perspectives\` — render the model to see what it looks like
-- \`validate_scad\` — check syntax before rendering (saves time)
-- \`analyze_model\` — get bounding box, dimensions, triangle count
-- \`export\` — export to STL, 3MF, AMF, etc.
-- \`check_openscad\` — verify OpenSCAD is installed and working
-- \`get_libraries\` — discover installed OpenSCAD libraries
+The \`openscad\` MCP server has exactly two tools — **use them proactively**:
+- \`render_scad_png\` — render SCAD **text** to a PNG. Arguments: \`scadCode\` (the file's contents, not its path), optional \`width\` / \`height\` (default 800 × 600), and \`cameraPreset\` (\`isometric\`, \`front\`, \`back\`, \`left\`, \`right\`, \`top\`, \`bottom\`) or \`cameraPosition\` \`{x, y, z}\`.
+- \`export_scad_stl\` — export SCAD text to an STL, returned as a base64 blob.
+
+Both tools run OpenSCAD as WebAssembly on the text alone:
+- They cannot read workspace files: \`import()\` fails, and \`include\` / \`use\` silently load nothing (the render shows only the rest). Check such a file with the OpenSCAD CLI.
+- The PNG has no colours (it is drawn from an STL). The ClawSCAD viewer shows the colours.
+- The image data also comes back as text, so a big PNG costs a lot of context. Keep it small, e.g. 400 × 300.
+- There is no validate, analyze or 3MF tool. Use the OpenSCAD CLI (\`$OPENSCAD_BINARY\` — in a ClawSCAD terminal, the same binary the app renders with) for syntax checks, dimensions and other formats.
 
 **Always render and visually verify your output.** Don't just write code and hope — use the MCP tools to see the result and iterate if needed.
 
@@ -1017,7 +1018,7 @@ function spawnPty(ctx, cmd, args = []) {
     cols: 80,
     rows: 24,
     cwd: ctx.workspaceDir,
-    env: { ...process.env, COLORTERM: 'truecolor' },
+    env: terminalEnv(process.env, getOpenscadBin()),
   });
   proc.onData((data) => ctxSend(ctx, 'terminal:data', data));
   return proc;
@@ -1029,7 +1030,7 @@ function spawnPty2(ctx, cmd, args = []) {
     cols: 80,
     rows: 24,
     cwd: ctx.workspaceDir,
-    env: { ...process.env, COLORTERM: 'truecolor' },
+    env: terminalEnv(process.env, getOpenscadBin()),
   });
   proc.onData((data) => ctxSend(ctx, 'terminal2:data', data));
   return proc;
