@@ -98,6 +98,54 @@ function createFixtureFetch(dir, { calls } = {}) {
       return id === '9990001' ? bytes(makeCubeStl(20), 'model/stl') : bytes(makeTinyThreeMf(), 'application/vnd.ms-3mfdocument');
     }
 
+    if (u.hostname === 'api.thingiverse.com') {
+      if (u.pathname.startsWith('/search')) {
+        return json(read('thingiverse-search.json'));
+      }
+      const filesMatch = /\/things\/(\d+)\/files/.exec(u.pathname);
+      if (filesMatch) {
+        return json(read('thingiverse-files.json'));
+      }
+      const thingMatch = /\/things\/(\d+)/.exec(u.pathname);
+      if (thingMatch) {
+        if (thingMatch[1] === '404') return json({ error: 'not found' }, 404);
+        return json(read('thingiverse-detail.json'));
+      }
+      const dlMatch = /\/files\/(\d+)\/download/.exec(u.pathname);
+      if (dlMatch) {
+        return json({ download_url: `https://cdn.thingiverse.com/fixture/${dlMatch[1]}` });
+      }
+    }
+
+    if (u.hostname === 'cdn.thingiverse.com' && u.pathname.startsWith('/fixture/')) {
+      const id = u.pathname.split('/').pop();
+      return id === '9990001' ? bytes(makeCubeStl(20), 'model/stl') : bytes(makeTinyThreeMf(), 'application/vnd.ms-3mfdocument');
+    }
+
+    if (u.hostname === 'www.myminifactory.com') {
+      if (u.pathname === '/api/v2/search') {
+        return json(read('myminifactory-search.json'));
+      }
+      const objMatch = /\/api\/v2\/objects\/(\d+)/.exec(u.pathname);
+      if (objMatch) {
+        if (objMatch[1] === '404') return json({ error: 'not found' }, 404);
+        return json(read('myminifactory-detail.json'));
+      }
+    }
+
+    if (u.hostname === 'cults3d.com' && u.pathname === '/graphql' && method === 'POST') {
+      const payload = JSON.parse(String(init.body || '{}'));
+      const q = String(payload.query || '');
+      if (q.includes('creationsSearchBatch')) {
+        return json(read('cults3d-search.json'));
+      }
+      if (q.includes('creation(')) {
+        const slug = String((payload.variables && payload.variables.slug) || '');
+        if (slug === '404') return json({ data: { creation: null } });
+        return json(read('cults3d-detail.json'));
+      }
+    }
+
     return json({ error: `fixture fetch has no answer for ${method} ${url}` }, 404);
   };
 }

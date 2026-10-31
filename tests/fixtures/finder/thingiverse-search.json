@@ -1,0 +1,22 @@
+{
+  "_provenance": "Built from documented response shape in E:/Claude/raw/clippings/2026-10-31-thingiverse-api-openapi.yaml",
+  "total": 1,
+  "hits": [
+    {
+      "id": 763622,
+      "name": "#3DBenchy - The jolly 3D printing torture-test",
+      "thumbnail": "https://cdn.thingiverse.com/renders/benchy_thumb.jpg",
+      "public_url": "https://www.thingiverse.com/thing:763622",
+      "creator": {
+        "id": 123,
+        "name": "CreativeTools",
+        "public_url": "https://www.thingiverse.com/CreativeTools"
+      },
+      "like_count": 80855,
+      "download_count": 3169879,
+      "license": "Creative Commons - Attribution - No Derivatives",
+      "description": "3DBenchy is a 3D model designed for testing 3D printers.",
+      "added": "2015-04-09T12:57:28+00:00"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "_provenance": "Built from documented response shape in E:/Claude/raw/clippings/2026-10-31-cults3d-graphql-api.md",
+  "data": {
+    "creationsSearchBatch": {
+      "total": 1,
+      "results": [
+        {
+          "id": "Q2F0ZWdvcnkvNDI=",
+          "slug": "print-in-place-cute-lucky-bunny",
+          "name": "Print-in-place Cute Lucky Bunny",
+          "shortUrl": "https://cults3d.com/:bunny",
+          "url": "https://cults3d.com/en/3d-model/art/print-in-place-cute-lucky-bunny",
+          "illustrationImageUrl": "https://cults3d.com/images/bunny.jpg",
+          "likesCount": 450,
+          "downloadsCount": 890,
+          "viewsCount": 3200,
+          "license": {
+            "name": "Cults - Private Use"
+          },
+          "creator": {
+            "nick": "bunnyartist",
+            "shortUrl": "https://cults3d.com/:bunnyartist"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -99,18 +99,18 @@ async function downloadModelFile({ adapter, http, workspaceDir, detail, fileId, 
   const part = dest + '.part';
   fs.rmSync(part, { force: true });
 
-  const res = await http.request('printables', link, {
+  const res = await http.request(detail.site, link, {
     as: 'response',
-    rateKey: 'printables',
+    rateKey: detail.site,
     headers: { 'User-Agent': userAgent || 'ClawSCAD-FindPrint/0.8' },
     timeoutMs: 120000,
-    label: 'Printables',
+    label: (adapter && adapter.label) || detail.site,
   });
   let bytes = 0;
   const hash = crypto.createHash('sha256');
   const fd = fs.openSync(part, 'w');
   try {
-    if (!res.body) throw new FinderError('network', 'Printables sent an empty download.');
+    if (!res.body) throw new FinderError('network', `${(adapter && adapter.label) || detail.site} sent an empty download.`);
     for await (const chunk of res.body) {
       bytes += chunk.length;
       if (bytes > maxBytes) throw new FinderError('too-large', `The download passed the ${(maxBytes / 1048576).toFixed(0)} MB limit and was stopped.`);

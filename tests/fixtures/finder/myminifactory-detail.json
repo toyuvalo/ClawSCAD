@@ -1,0 +1,35 @@
+{
+  "_provenance": "Built from documented response shape in E:/Claude/raw/clippings/2026-10-31-myminifactory-api-openapi.yaml",
+  "id": 12345,
+  "name": "Mini Dragon Sculpt",
+  "url": "https://www.myminifactory.com/object/3d-print-mini-dragon-sculpt-12345",
+  "description": "A detailed mini dragon.",
+  "description_html": "<p>A detailed mini dragon.</p>",
+  "views": 1500,
+  "likes": 320,
+  "published_at": "2026-01-15T10:00:00Z",
+  "license": "Creative Commons - Attribution",
+  "designer": {
+    "username": "dragonmaker",
+    "name": "Dragon Maker",
+    "profile_url": "https://www.myminifactory.com/users/dragonmaker",
+    "avatar_url": "https://www.myminifactory.com/avatars/dragon.jpg"
+  },
+  "images": [
+    {
+      "standard": {
+        "url": "https://www.myminifactory.com/images/dragon.jpg"
+      }
+    }
+  ],
+  "files": [
+    {
+      "id": 54321,
+      "filename": "dragon.stl",
+      "size": "1048576",
+      "thumbnail_url": "https://www.myminifactory.com/images/dragon-thumb.jpg",
+      "viewer_url": "https://www.myminifactory.com/viewers/dragon.stl",
+      "download_url": "https://www.myminifactory.com/download/54321"
+    }
+  ]
+}

@@ -51,6 +51,14 @@ const DETAIL_QUERY = `query Detail($id: ID!) {
 
 const isId = (v) => /^\d{1,12}$/.test(String(v));
 
+function parseModelId(id) {
+  const s = String(id || '').trim();
+  const m = /^printables:(\d{1,12})$/i.exec(s);
+  if (m) return m[1];
+  if (/^\d{1,12}$/.test(s)) return s;
+  return null;
+}
+
 /** A download link is accepted only if it is https on a printables.com host. */
 function isPrintablesFileUrl(link) {
   try {
@@ -96,8 +104,9 @@ function createPrintablesAdapter({ http }) {
     };
   }
 
-  async function detail(id) {
-    if (!isId(id)) throw new FinderError('bad-request', 'That is not a Printables model number.');
+  async function detail(rawId) {
+    const id = parseModelId(rawId);
+    if (!id) throw new FinderError('bad-request', 'That is not a Printables model number.');
     const data = await gql(DETAIL_QUERY, { id: String(id) });
     const out = data.print ? normalizePrintablesDetail(data.print) : null;
     if (!out) throw new FinderError('not-found', `${LABEL} has no model ${id}.`, { site: 'printables' });
@@ -109,8 +118,10 @@ function createPrintablesAdapter({ http }) {
    * and the enum values are literals, so nothing user-typed reaches the query.
    * @returns {Promise<string>} the https link on a printables.com host
    */
-  async function downloadLink(printId, fileId) {
-    if (!isId(printId) || !isId(fileId)) throw new FinderError('bad-request', 'That is not a Printables file number.');
+  async function downloadLink(rawPrintId, rawFileId) {
+    const printId = parseModelId(rawPrintId);
+    const fileId = String(rawFileId || '').trim();
+    if (!printId || !isId(fileId)) throw new FinderError('bad-request', 'That is not a Printables file number.');
     const query =
       `mutation { getDownloadLink(id: "${fileId}", printId: "${printId}", fileType: stl, source: model_detail) ` +
       `{ ok errors { field messages } output { link count ttl } } }`;

@@ -73,6 +73,9 @@ function parseLicence(name, abbreviation) {
   if (/standard digital file/.test(text)) {
     return { label: 'Standard Digital File License', name: raw, remix: 'no', commercial: 'no' };
   }
+  if (/private use/.test(text)) {
+    return { label: 'Private Use', name: raw, remix: 'no', commercial: 'no' };
+  }
   if (/\bcc0\b|public domain|zero/.test(text)) {
     return { label: 'CC0', name: raw, remix: 'yes', commercial: 'yes' };
   }
@@ -198,6 +201,241 @@ function normalizePrintablesDetail(print) {
   };
 }
 
+// ── Thingiverse ──────────────────────────────────────────────────────────
+
+const THINGIVERSE_SITE = 'https://www.thingiverse.com';
+
+function normalizeThingiverseHit(hit) {
+  if (!hit || hit.id == null) return null;
+  const id = String(hit.id);
+  const lic = parseLicence(hit.license);
+  const author = str(hit.creator && (hit.creator.name || hit.creator.first_name || hit.creator.username));
+  return {
+    id: `thingiverse:${id}`,
+    site: 'thingiverse',
+    siteId: id,
+    title: str(hit.name) || `Thing ${id}`,
+    author,
+    authorUrl: str(hit.creator && hit.creator.public_url) || (author ? `${THINGIVERSE_SITE}/${encodeURIComponent(author)}` : null),
+    cover: str(hit.thumbnail) || (hit.default_image && str(hit.default_image.url)) || null,
+    likes: toInt(hit.like_count),
+    downloads: toInt(hit.download_count),
+    licence: lic.label,
+    licenceName: lic.name,
+    url: str(hit.public_url) || `${THINGIVERSE_SITE}/thing:${id}`,
+  };
+}
+
+function thingiverseFile(f) {
+  if (!f || f.id == null) return null;
+  const name = str(f.name) || 'file';
+  const kind = fileKind(name);
+  const printable = PRINTABLE_EXTS.has(kind);
+  return {
+    id: String(f.id),
+    name,
+    size: toInt(f.size),
+    kind,
+    group: 'files',
+    folder: null,
+    note: null,
+    previewUrl: str(f.thumbnail),
+    printable,
+    downloadable: printable,
+    reason: printable ? null : NOT_PHASE1,
+    reasonShort: printable ? null : 'STL and 3MF only',
+  };
+}
+
+function normalizeThingiverseDetail(thing, rawFiles = []) {
+  const base = normalizeThingiverseHit(thing);
+  if (!base) return null;
+  const lic = parseLicence(thing.license);
+  const files = (Array.isArray(rawFiles) ? rawFiles : []).map(thingiverseFile).filter(Boolean);
+  const images = [];
+  if (base.cover) images.push(base.cover);
+  const tags = (Array.isArray(thing.tags) ? thing.tags : []).map((t) => str(t && (t.name || t))).filter(Boolean);
+  const cat = Array.isArray(thing.categories) && thing.categories[0] ? str(thing.categories[0].name) : null;
+  return {
+    ...base,
+    description: htmlToText(thing.description_html) || htmlToText(thing.description),
+    summary: null,
+    images,
+    tags,
+    category: cat,
+    published: str(thing.added),
+    authorAvatar: str(thing.creator && (thing.creator.thumbnail || thing.creator.avatar_image)),
+    licenceInfo: {
+      remix: lic.remix,
+      commercial: lic.commercial,
+      url: null,
+      text: null,
+    },
+    files,
+    download: { available: true },
+  };
+}
+
+// ── MyMiniFactory ────────────────────────────────────────────────────────
+
+const MMF_SITE = 'https://www.myminifactory.com';
+const MMF_NO_DL = 'MyMiniFactory API key does not allow file downloads (OAuth required).';
+
+function normalizeMyMiniFactoryHit(hit) {
+  if (!hit || hit.id == null) return null;
+  const id = String(hit.id);
+  const lic = parseLicence(hit.license);
+  const author = str(hit.designer && (hit.designer.name || hit.designer.username));
+  let cover = null;
+  if (Array.isArray(hit.images) && hit.images[0]) {
+    const img = hit.images[0];
+    cover = str((img.standard && img.standard.url) || (img.original && img.original.url) || (img.thumbnail && img.thumbnail.url));
+  }
+  return {
+    id: `myminifactory:${id}`,
+    site: 'myminifactory',
+    siteId: id,
+    title: str(hit.name) || `Object ${id}`,
+    author,
+    authorUrl: str(hit.designer && hit.designer.profile_url) || (author ? `${MMF_SITE}/users/${encodeURIComponent(author)}` : null),
+    cover,
+    likes: toInt(hit.likes),
+    downloads: toInt(hit.views),
+    licence: lic.label,
+    licenceName: lic.name,
+    url: str(hit.url) || `${MMF_SITE}/object/3d-print-${id}`,
+  };
+}
+
+function myMiniFactoryFile(f) {
+  if (!f || f.id == null) return null;
+  const name = str(f.filename) || str(f.name) || 'file';
+  const kind = fileKind(name);
+  const printable = PRINTABLE_EXTS.has(kind);
+  return {
+    id: String(f.id),
+    name,
+    size: toInt(f.size),
+    kind,
+    group: 'files',
+    folder: null,
+    note: null,
+    previewUrl: str(f.thumbnail_url),
+    printable,
+    downloadable: false,
+    reason: MMF_NO_DL,
+    reasonShort: 'OAuth required',
+  };
+}
+
+function normalizeMyMiniFactoryDetail(obj) {
+  const base = normalizeMyMiniFactoryHit(obj);
+  if (!base) return null;
+  const lic = parseLicence(obj.license);
+  const files = (Array.isArray(obj.files) ? obj.files : []).map(myMiniFactoryFile).filter(Boolean);
+  const images = (Array.isArray(obj.images) ? obj.images : [])
+    .map((img) => str((img.original && img.original.url) || (img.standard && img.standard.url) || (img.thumbnail && img.thumbnail.url)))
+    .filter(Boolean);
+  return {
+    ...base,
+    description: htmlToText(obj.description_html) || htmlToText(obj.description),
+    summary: null,
+    images: images.length ? images : base.cover ? [base.cover] : [],
+    tags: (Array.isArray(obj.tags) ? obj.tags : []).map((t) => str(t && (t.name || t))).filter(Boolean),
+    category: str(obj.category && (obj.category.name || obj.category)),
+    published: str(obj.published_at),
+    authorAvatar: str(obj.designer && (obj.designer.avatar_url || obj.designer.avatar)),
+    licenceInfo: {
+      remix: lic.remix,
+      commercial: lic.commercial,
+      url: null,
+      text: null,
+    },
+    files,
+    download: { available: false, reason: MMF_NO_DL },
+  };
+}
+
+// ── Cults3D ──────────────────────────────────────────────────────────────
+
+const CULTS_SITE = 'https://cults3d.com';
+const CULTS_NO_DL = 'Cults3D does not provide file downloads via its API.';
+
+function normalizeCults3dHit(hit) {
+  if (!hit) return null;
+  const rawId = str(hit.slug) || str(hit.id);
+  if (!rawId) return null;
+  const lic = parseLicence(hit.license && hit.license.name);
+  const author = str(hit.creator && hit.creator.nick);
+  return {
+    id: `cults3d:${rawId}`,
+    site: 'cults3d',
+    siteId: rawId,
+    title: str(hit.name) || `Creation ${rawId}`,
+    author,
+    authorUrl: str(hit.creator && hit.creator.shortUrl) || (author ? `${CULTS_SITE}/en/users/${encodeURIComponent(author)}` : null),
+    cover: str(hit.illustrationImageUrl),
+    likes: toInt(hit.likesCount),
+    downloads: toInt(hit.downloadsCount),
+    licence: lic.label,
+    licenceName: lic.name,
+    url: str(hit.url) || str(hit.shortUrl) || `${CULTS_SITE}/en/3d-model/${rawId}`,
+  };
+}
+
+function cults3dFile(f, idx) {
+  if (!f) return null;
+  const fileUrl = str(f.fileUrl) || '';
+  const m = /\/([^/?#]+)(?:[?#]|$)/.exec(fileUrl);
+  const parsedName = m ? m[1] : '';
+  const name = parsedName || str(f.name) || `file-${idx + 1}`;
+  const kind = fileKind(name);
+  const printable = PRINTABLE_EXTS.has(kind);
+  return {
+    id: String(f.id || idx + 1),
+    name,
+    size: toInt(f.size),
+    kind,
+    group: 'blueprints',
+    folder: null,
+    note: null,
+    previewUrl: str(f.imageUrl),
+    printable,
+    downloadable: false,
+    reason: CULTS_NO_DL,
+    reasonShort: 'Web download only',
+  };
+}
+
+function normalizeCults3dDetail(creation) {
+  const base = normalizeCults3dHit(creation);
+  if (!base) return null;
+  const lic = parseLicence(creation.license && creation.license.name);
+  const files = (Array.isArray(creation.blueprints) ? creation.blueprints : []).map(cults3dFile).filter(Boolean);
+  const images = (Array.isArray(creation.illustrations) ? creation.illustrations : [])
+    .map((i) => str(i && i.imageUrl))
+    .filter(Boolean);
+  if (!images.length && base.cover) images.push(base.cover);
+  return {
+    ...base,
+    description: htmlToText(creation.description),
+    summary: null,
+    images,
+    tags: (Array.isArray(creation.tags) ? creation.tags : []).map((t) => str(t && (t.name || t))).filter(Boolean),
+    category: str(creation.category && (creation.category.name || creation.category)),
+    published: str(creation.publishedAt),
+    authorAvatar: null,
+    licenceInfo: {
+      remix: lic.remix,
+      commercial: lic.commercial,
+      url: null,
+      text: null,
+    },
+    files,
+    download: { available: false, reason: CULTS_NO_DL },
+  };
+}
+
 // ── merge ────────────────────────────────────────────────────────────────
 
 /**
@@ -236,6 +474,12 @@ module.exports = {
   extOf,
   normalizePrintablesHit,
   normalizePrintablesDetail,
+  normalizeThingiverseHit,
+  normalizeThingiverseDetail,
+  normalizeMyMiniFactoryHit,
+  normalizeMyMiniFactoryDetail,
+  normalizeCults3dHit,
+  normalizeCults3dDetail,
   interleave,
   printablesModelUrl,
 };

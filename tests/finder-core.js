@@ -26,6 +26,12 @@ const {
   interleave,
   normalizePrintablesHit,
   normalizePrintablesDetail,
+  normalizeThingiverseHit,
+  normalizeThingiverseDetail,
+  normalizeMyMiniFactoryHit,
+  normalizeMyMiniFactoryDetail,
+  normalizeCults3dHit,
+  normalizeCults3dDetail,
   SITES,
 } = require('../main/finder/normalize.js');
 const {
@@ -35,9 +41,14 @@ const {
 } = require('../main/finder/adapters/printables.js');
 const {
   createThingiverseAdapter,
+  isThingiverseFileUrl,
+} = require('../main/finder/adapters/thingiverse.js');
+const {
   createMyMiniFactoryAdapter,
+} = require('../main/finder/adapters/myminifactory.js');
+const {
   createCults3dAdapter,
-} = require('../main/finder/adapters/key-stubs.js');
+} = require('../main/finder/adapters/cults3d.js');
 const { createFinder, SEARCH_TTL_MS } = require('../main/finder/index.js');
 const { createFixtureFetch } = require('../main/finder/fixture-fetch.js');
 
@@ -491,6 +502,72 @@ async function check(name, fn) {
     assert.strictEqual(gcode.downloadable, false);
     assert.ok(gcode.reason);
   });
+  await check('normalize: normalizers check field-by-field for Thingiverse, MyMiniFactory, and Cults3D fixtures', async () => {
+    const tvSearchRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'thingiverse-search.json'), 'utf-8'));
+    const tvDetailRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'thingiverse-detail.json'), 'utf-8'));
+    const tvFilesRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'thingiverse-files.json'), 'utf-8'));
+
+    const tvHit = normalizeThingiverseHit(tvSearchRaw.hits[0]);
+    assert.strictEqual(tvHit.id, 'thingiverse:763622');
+    assert.strictEqual(tvHit.site, 'thingiverse');
+    assert.strictEqual(tvHit.siteId, '763622');
+    assert.strictEqual(tvHit.licence, 'CC BY-ND');
+    for (const [k, v] of Object.entries(tvHit)) {
+      assert.notStrictEqual(v, undefined, k);
+      assert.notStrictEqual(v, 'undefined', k);
+    }
+
+    const tvDetail = normalizeThingiverseDetail(tvDetailRaw, tvFilesRaw);
+    assert.strictEqual(tvDetail.id, 'thingiverse:763622');
+    assert.strictEqual(tvDetail.download.available, true);
+    assert.strictEqual(tvDetail.files.length, 1);
+    assert.strictEqual(tvDetail.files[0].printable, true);
+    for (const [k, v] of Object.entries(tvDetail)) {
+      assert.notStrictEqual(v, undefined, k);
+      assert.notStrictEqual(v, 'undefined', k);
+    }
+
+    const mmfSearchRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'myminifactory-search.json'), 'utf-8'));
+    const mmfDetailRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'myminifactory-detail.json'), 'utf-8'));
+
+    const mmfHit = normalizeMyMiniFactoryHit(mmfSearchRaw.items[0]);
+    assert.strictEqual(mmfHit.id, 'myminifactory:12345');
+    assert.strictEqual(mmfHit.site, 'myminifactory');
+    assert.strictEqual(mmfHit.siteId, '12345');
+    for (const [k, v] of Object.entries(mmfHit)) {
+      assert.notStrictEqual(v, undefined, k);
+      assert.notStrictEqual(v, 'undefined', k);
+    }
+
+    const mmfDetail = normalizeMyMiniFactoryDetail(mmfDetailRaw);
+    assert.strictEqual(mmfDetail.id, 'myminifactory:12345');
+    assert.strictEqual(mmfDetail.download.available, false);
+    for (const [k, v] of Object.entries(mmfDetail)) {
+      assert.notStrictEqual(v, undefined, k);
+      assert.notStrictEqual(v, 'undefined', k);
+    }
+
+    const cultsSearchRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'cults3d-search.json'), 'utf-8'));
+    const cultsDetailRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'cults3d-detail.json'), 'utf-8'));
+
+    const cultsHit = normalizeCults3dHit(cultsSearchRaw.data.creationsSearchBatch.results[0]);
+    assert.strictEqual(cultsHit.id, 'cults3d:print-in-place-cute-lucky-bunny');
+    assert.strictEqual(cultsHit.site, 'cults3d');
+    assert.strictEqual(cultsHit.siteId, 'print-in-place-cute-lucky-bunny');
+    assert.strictEqual(cultsHit.licence, 'Private Use');
+    for (const [k, v] of Object.entries(cultsHit)) {
+      assert.notStrictEqual(v, undefined, k);
+      assert.notStrictEqual(v, 'undefined', k);
+    }
+
+    const cultsDetail = normalizeCults3dDetail(cultsDetailRaw.data.creation);
+    assert.strictEqual(cultsDetail.id, 'cults3d:print-in-place-cute-lucky-bunny');
+    assert.strictEqual(cultsDetail.download.available, false);
+    for (const [k, v] of Object.entries(cultsDetail)) {
+      assert.notStrictEqual(v, undefined, k);
+      assert.notStrictEqual(v, 'undefined', k);
+    }
+  });
 
   // ── 5. adapters ──────────────────────────────────────────────────────────
 
@@ -604,11 +681,66 @@ async function check(name, fn) {
     }
   });
 
-  await check('adapters: a stub whose key is set still refuses, and says the support is not built', async () => {
-    const s = createMyMiniFactoryAdapter({ env: { MYMINIFACTORY_API_KEY: 'sekret-value-123' } });
+  await check('adapters: when keys are set, Thingiverse, MyMiniFactory and Cults3D perform real search and detail queries', async () => {
+    const fixtureFetch = createFixtureFetch(FIXTURES_DIR);
+    const http = createHttp({ fetchImpl: fixtureFetch });
+
+    const tv = createThingiverseAdapter({ http, env: { THINGIVERSE_API_TOKEN: 'tv-token-test-123' } });
+    assert.strictEqual(tv.available, true);
+    const tvSearch = await tv.search('benchy');
+    assert.strictEqual(tvSearch.total, 1);
+    assert.strictEqual(tvSearch.items[0].site, 'thingiverse');
+    assert.strictEqual(tvSearch.items[0].id, 'thingiverse:763622');
+    const tvDetail = await tv.detail('763622');
+    assert.strictEqual(tvDetail.siteId, '763622');
+    assert.strictEqual(tvDetail.download.available, true);
+    // ID bug: accepts full prefixed id as well
+    const tvDetailFull = await tv.detail('thingiverse:763622');
+    assert.strictEqual(tvDetailFull.siteId, '763622');
+
+    const mmf = createMyMiniFactoryAdapter({ http, env: { MYMINIFACTORY_API_KEY: 'mmf-key-test-456' } });
+    assert.strictEqual(mmf.available, true);
+    const mmfSearch = await mmf.search('dragon');
+    assert.strictEqual(mmfSearch.total, 1);
+    assert.strictEqual(mmfSearch.items[0].site, 'myminifactory');
+    assert.strictEqual(mmfSearch.items[0].id, 'myminifactory:12345');
+    const mmfDetail = await mmf.detail('12345');
+    assert.strictEqual(mmfDetail.siteId, '12345');
+    assert.strictEqual(mmfDetail.download.available, false);
+    // ID bug: accepts full prefixed id as well
+    const mmfDetailFull = await mmf.detail('myminifactory:12345');
+    assert.strictEqual(mmfDetailFull.siteId, '12345');
+
+    const cults = createCults3dAdapter({ http, env: { CULTS3D_API_KEY: 'cults-key-test-789', CULTS3D_USERNAME: 'cultsuser' } });
+    assert.strictEqual(cults.available, true);
+    const cultsSearch = await cults.search('bunny');
+    assert.strictEqual(cultsSearch.total, 1);
+    assert.strictEqual(cultsSearch.items[0].site, 'cults3d');
+    assert.strictEqual(cultsSearch.items[0].id, 'cults3d:print-in-place-cute-lucky-bunny');
+    const cultsDetail = await cults.detail('print-in-place-cute-lucky-bunny');
+    assert.strictEqual(cultsDetail.siteId, 'print-in-place-cute-lucky-bunny');
+    assert.strictEqual(cultsDetail.download.available, false);
+    // ID bug: accepts full prefixed id as well
+    const cultsDetailFull = await cults.detail('cults3d:print-in-place-cute-lucky-bunny');
+    assert.strictEqual(cultsDetailFull.siteId, 'print-in-place-cute-lucky-bunny');
+  });
+
+  await check('adapters: Thingiverse downloadLink validates host via isThingiverseFileUrl and refuses non-thingiverse hosts', async () => {
+    assert.strictEqual(isThingiverseFileUrl('https://cdn.thingiverse.com/fixture/9990001'), true);
+    assert.strictEqual(isThingiverseFileUrl('https://thingiverse.com/download/123'), true);
+    assert.strictEqual(isThingiverseFileUrl('https://cdn.thingiverse.com.evil.com/fake.stl'), false);
+    assert.strictEqual(isThingiverseFileUrl('http://cdn.thingiverse.com/fake.stl'), false);
+    assert.strictEqual(isThingiverseFileUrl('not-a-url'), false);
+
+    const httpMalicious = {
+      json: async () => [
+        { id: '1223854', direct_url: 'https://cdn.thingiverse.com.evil.com/fake.stl' }
+      ],
+    };
+    const tvMalicious = createThingiverseAdapter({ http: httpMalicious, env: { THINGIVERSE_API_TOKEN: 'tv-token' } });
     await assert.rejects(
-      () => s.search('a'),
-      (err) => err.code === 'needs-key' && /not built yet/.test(err.message) && !err.message.includes('sekret-value-123') // the key value is never echoed
+      () => tvMalicious.downloadLink('763622', '1223854'),
+      (err) => err instanceof FinderError && err.code === 'blocked'
     );
   });
 
@@ -888,6 +1020,87 @@ async function check(name, fn) {
       const res = await finder.detail({ site: 'printables', id: '404' });
       assert.strictEqual(res.ok, false);
       assert.strictEqual(res.error.code, 'not-found');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  await check('id bug: finder.detail and finder.download accept both short id and prefixed id for all sources', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-idbug-'));
+    try {
+      const finder = createFinder({
+        cacheDir: tmpDir,
+        fetchImpl: createFixtureFetch(FIXTURES_DIR),
+        minIntervalMs: 0,
+        env: {
+          THINGIVERSE_API_TOKEN: 'token-tv',
+          MYMINIFACTORY_API_KEY: 'key-mmf',
+          CULTS3D_API_KEY: 'key-cults',
+          CULTS3D_USERNAME: 'user-cults',
+        },
+      });
+
+      // Printables
+      const d1 = await finder.detail({ site: 'printables', id: '543553' });
+      assert.strictEqual(d1.ok, true);
+      assert.strictEqual(d1.detail.siteId, '543553');
+      const d1Prefixed = await finder.detail({ site: 'printables', id: 'printables:543553' });
+      assert.strictEqual(d1Prefixed.ok, true);
+      assert.strictEqual(d1Prefixed.detail.siteId, '543553');
+      const d1Inferred = await finder.detail({ id: 'printables:543553' });
+      assert.strictEqual(d1Inferred.ok, true);
+      assert.strictEqual(d1Inferred.detail.siteId, '543553');
+
+      // Thingiverse
+      const d2 = await finder.detail({ site: 'thingiverse', id: '763622' });
+      assert.strictEqual(d2.ok, true);
+      assert.strictEqual(d2.detail.siteId, '763622');
+      const d2Prefixed = await finder.detail({ site: 'thingiverse', id: 'thingiverse:763622' });
+      assert.strictEqual(d2Prefixed.ok, true);
+      assert.strictEqual(d2Prefixed.detail.siteId, '763622');
+
+      // MyMiniFactory
+      const d3 = await finder.detail({ site: 'myminifactory', id: '12345' });
+      assert.strictEqual(d3.ok, true);
+      assert.strictEqual(d3.detail.siteId, '12345');
+      const d3Prefixed = await finder.detail({ site: 'myminifactory', id: 'myminifactory:12345' });
+      assert.strictEqual(d3Prefixed.ok, true);
+      assert.strictEqual(d3Prefixed.detail.siteId, '12345');
+
+      // Cults3D
+      const d4 = await finder.detail({ site: 'cults3d', id: 'print-in-place-cute-lucky-bunny' });
+      assert.strictEqual(d4.ok, true);
+      assert.strictEqual(d4.detail.siteId, 'print-in-place-cute-lucky-bunny');
+      const d4Prefixed = await finder.detail({ site: 'cults3d', id: 'cults3d:print-in-place-cute-lucky-bunny' });
+      assert.strictEqual(d4Prefixed.ok, true);
+      assert.strictEqual(d4Prefixed.detail.siteId, 'print-in-place-cute-lucky-bunny');
+
+      // Download accepts both forms for printables
+      const dlShort = await finder.download({ workspaceDir: tmpDir, site: 'printables', id: '543553', fileId: '9990001' });
+      assert.strictEqual(dlShort.ok, true);
+      const dlPrefixed = await finder.download({ workspaceDir: tmpDir, site: 'printables', id: 'printables:543553', fileId: '9990001' });
+      assert.strictEqual(dlPrefixed.ok, true);
+
+      // Thingiverse download accepts both forms
+      const dlTvShort = await finder.download({ workspaceDir: tmpDir, site: 'thingiverse', id: '763622', fileId: '1223854' });
+      assert.strictEqual(dlTvShort.ok, true);
+      const dlTvPrefixed = await finder.download({ workspaceDir: tmpDir, site: 'thingiverse', id: 'thingiverse:763622', fileId: '1223854' });
+      assert.strictEqual(dlTvPrefixed.ok, true);
+
+      // MMF and Cults download refuse with unsupported for both forms
+      const dlMmf1 = await finder.download({ workspaceDir: tmpDir, site: 'myminifactory', id: '12345', fileId: '54321' });
+      assert.strictEqual(dlMmf1.ok, false);
+      assert.strictEqual(dlMmf1.error.code, 'unsupported');
+      const dlMmf2 = await finder.download({ workspaceDir: tmpDir, site: 'myminifactory', id: 'myminifactory:12345', fileId: '54321' });
+      assert.strictEqual(dlMmf2.ok, false);
+      assert.strictEqual(dlMmf2.error.code, 'unsupported');
+
+      const dlCults1 = await finder.download({ workspaceDir: tmpDir, site: 'cults3d', id: 'print-in-place-cute-lucky-bunny', fileId: '1' });
+      assert.strictEqual(dlCults1.ok, false);
+      assert.strictEqual(dlCults1.error.code, 'unsupported');
+      const dlCults2 = await finder.download({ workspaceDir: tmpDir, site: 'cults3d', id: 'cults3d:print-in-place-cute-lucky-bunny', fileId: '1' });
+      assert.strictEqual(dlCults2.ok, false);
+      assert.strictEqual(dlCults2.error.code, 'unsupported');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

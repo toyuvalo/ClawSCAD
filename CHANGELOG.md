@@ -5,6 +5,36 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.8.1] - 2026-10-31
+
+### Added
+
+- **Real model-search adapters for Thingiverse, MyMiniFactory, and Cults3D.**
+  Replaced the label-only stubs with fully implemented adapters conforming to the
+  public API documentation pinned in `E:\Claude\raw\clippings\`.
+  - **Thingiverse:** REST adapter using Bearer token auth (`THINGIVERSE_API_TOKEN`).
+    Supports search (`/search/{term}/?type=things`), model detail (`/things/{id}`),
+    file listings (`/things/{id}/files`), and file downloads (`/files/{id}/download`).
+    Validates download target host against `isThingiverseFileUrl`.
+  - **MyMiniFactory:** REST v2 adapter using API key auth (`MYMINIFACTORY_API_KEY`).
+    Supports search (`/search`) and object detail (`/objects/{id}`). Direct file
+    downloads require user-authorized OAuth per official public API spec and are
+    refused with code `unsupported`.
+  - **Cults3D:** GraphQL adapter using HTTP Basic Auth (`CULTS3D_USERNAME` and
+    `CULTS3D_API_KEY`). Supports search (`creationsSearchBatch`) and creation detail
+    by slug (`creation(slug)`). Direct file downloads are not provided by the public API
+    and are refused with code `unsupported`.
+  - Without environment keys present, each source cleanly reports `available: false`
+    with `reason: 'needs-key'` and never makes network requests.
+- **Offline test fixtures with provenance:** Added recorded fixtures for search and detail
+  for Thingiverse, MyMiniFactory, and Cults3D under `tests/fixtures/finder/`.
+
+### Fixed
+
+- **Model ID prefix handling:** `finder.detail()` and `finder.download()` now accept
+  both short numeric/slug IDs (`"543553"`, `"763622"`) and full prefixed IDs
+  (`"printables:543553"`, `"thingiverse:763622"`, etc.) returned by `search()`.
+
 ## [0.8.0] - 2026-10-31
 
 ### Added

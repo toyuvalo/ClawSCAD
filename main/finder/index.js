@@ -21,7 +21,9 @@ const { createCache } = require('./cache.js');
 const { createHttp } = require('./http.js');
 const { interleave, SITES } = require('./normalize.js');
 const { createPrintablesAdapter, USER_AGENT: PRINTABLES_UA } = require('./adapters/printables.js');
-const { createThingiverseAdapter, createMyMiniFactoryAdapter, createCults3dAdapter } = require('./adapters/key-stubs.js');
+const { createThingiverseAdapter } = require('./adapters/thingiverse.js');
+const { createMyMiniFactoryAdapter } = require('./adapters/myminifactory.js');
+const { createCults3dAdapter } = require('./adapters/cults3d.js');
 const { downloadModelFile } = require('./download.js');
 const { openInClawscad } = require('./checkpoint.js');
 const { createRunner } = require('./runner.js');
@@ -46,6 +48,19 @@ function cleanQuery(q) {
   return String(q == null ? '' : q).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_QUERY);
 }
 
+function normalizeSiteAndId(site, id) {
+  let s = site ? String(site).trim().toLowerCase() : '';
+  let rawId = String(id == null ? '' : id).trim();
+  if (!s && rawId.includes(':')) {
+    const idx = rawId.indexOf(':');
+    s = rawId.slice(0, idx).toLowerCase();
+    rawId = rawId.slice(idx + 1);
+  } else if (s && rawId.toLowerCase().startsWith(`${s}:`)) {
+    rawId = rawId.slice(s.length + 1);
+  }
+  return { site: s, id: rawId };
+}
+
 /**
  * @param {object} opts
  * @param {string} [opts.cacheDir]      directory for the TTL file cache
@@ -61,9 +76,9 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
   const http = createHttp({ fetchImpl, limiter });
   const adapters = {
     printables: createPrintablesAdapter({ http }),
-    thingiverse: createThingiverseAdapter({ env }),
-    myminifactory: createMyMiniFactoryAdapter({ env }),
-    cults3d: createCults3dAdapter({ env }),
+    thingiverse: createThingiverseAdapter({ http, env }),
+    myminifactory: createMyMiniFactoryAdapter({ http, env }),
+    cults3d: createCults3dAdapter({ http, env }),
   };
 
   // Tool locations: constants in slicer.js / printer.js, overridable per machine.
@@ -150,13 +165,16 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
   // ── detail ─────────────────────────────────────────────────────────────
 
   async function getDetail(site, id) {
-    const adapter = adapters[site];
+    const norm = normalizeSiteAndId(site, id);
+    const targetSite = norm.site;
+    const cleanId = norm.id;
+    const adapter = adapters[targetSite];
     if (!adapter || typeof adapter.detail !== 'function') throw new FinderError('bad-request', 'Unknown site.');
-    const key = `detail|${site}|${id}`;
+    const key = `detail|${targetSite}|${cleanId}`;
     const hit = cache.get(key);
     if (hit) return { detail: hit.value, cached: true, stale: false };
     try {
-      const detail = await adapter.detail(String(id));
+      const detail = await adapter.detail(cleanId);
       cache.set(key, detail, DETAIL_TTL_MS);
       return { detail, cached: false, stale: false };
     } catch (err) {
@@ -168,7 +186,7 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
 
   async function detail({ site, id } = {}) {
     try {
-      const r = await getDetail(String(site), String(id));
+      const r = await getDetail(site, id);
       return { ok: true, detail: r.detail, cached: r.cached, stale: r.stale };
     } catch (err) {
       return fail(err);
@@ -179,13 +197,17 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
 
   async function download({ workspaceDir, site, id, fileId } = {}) {
     try {
-      if (site !== 'printables') {
-        const a = adapters[site];
-        if (a && typeof a.download === 'function') await a.download();
+      const norm = normalizeSiteAndId(site, id);
+      const targetSite = norm.site;
+      const cleanId = norm.id;
+      const adapter = adapters[targetSite];
+      if (!adapter) throw new FinderError('unsupported', 'Unknown site.');
+      if (targetSite !== 'printables' && targetSite !== 'thingiverse') {
+        if (typeof adapter.download === 'function') await adapter.download();
         throw new FinderError('unsupported', 'This site does not allow downloads from this app.');
       }
-      const { detail: d } = await getDetail('printables', String(id));
-      return await downloadModelFile({ adapter: adapters.printables, http, workspaceDir, detail: d, fileId, userAgent: userAgent || PRINTABLES_UA });
+      const { detail: d } = await getDetail(targetSite, cleanId);
+      return await downloadModelFile({ adapter, http, workspaceDir, detail: d, fileId, userAgent: userAgent || PRINTABLES_UA });
     } catch (err) {
       return fail(err);
     }
@@ -193,7 +215,8 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
 
   async function open({ workspaceDir, site, id, path: relPath, addCheckpoint } = {}) {
     try {
-      const { detail: d } = await getDetail(String(site), String(id));
+      const norm = normalizeSiteAndId(site, id);
+      const { detail: d } = await getDetail(norm.site, norm.id);
       return openInClawscad({ workspaceDir, detail: d, relPath, addCheckpoint });
     } catch (err) {
       return fail(err);
@@ -240,7 +263,8 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
       needPrinting();
       const running = [...jobs.values()].find((j) => j.kind === 'slice' && j.status === 'running');
       if (running) throw new FinderError('busy', 'A model is already being sliced. Wait for it to finish.');
-      const { detail: d } = await getDetail(String(site), String(id));
+      const norm = normalizeSiteAndId(site, id);
+      const { detail: d } = await getDetail(norm.site, norm.id);
       const job = startJob('slice', async (note) => {
         note('Reading the printer');
         const s = await printer.status({});

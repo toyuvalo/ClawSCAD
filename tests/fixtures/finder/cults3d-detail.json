@@ -1,0 +1,40 @@
+{
+  "_provenance": "Built from documented response shape in E:/Claude/raw/clippings/2026-10-31-cults3d-graphql-api.md",
+  "data": {
+    "creation": {
+      "id": "Q2F0ZWdvcnkvNDI=",
+      "slug": "print-in-place-cute-lucky-bunny",
+      "name": "Print-in-place Cute Lucky Bunny",
+      "shortUrl": "https://cults3d.com/:bunny",
+      "url": "https://cults3d.com/en/3d-model/art/print-in-place-cute-lucky-bunny",
+      "description": "Articulated cute bunny printing without supports.",
+      "illustrationImageUrl": "https://cults3d.com/images/bunny.jpg",
+      "illustrations": [
+        {
+          "imageUrl": "https://cults3d.com/images/bunny.jpg"
+        }
+      ],
+      "publishedAt": "2026-03-20T14:00:00Z",
+      "likesCount": 450,
+      "downloadsCount": 890,
+      "viewsCount": 3200,
+      "tags": ["bunny", "print-in-place"],
+      "category": {
+        "name": "Art"
+      },
+      "license": {
+        "name": "Cults - Private Use"
+      },
+      "creator": {
+        "nick": "bunnyartist",
+        "shortUrl": "https://cults3d.com/:bunnyartist"
+      },
+      "blueprints": [
+        {
+          "fileUrl": "https://cults3d.com/files/bunny.stl",
+          "imageUrl": "https://cults3d.com/images/bunny.jpg"
+        }
+      ]
+    }
+  }
+}
