@@ -87,8 +87,9 @@ async function downloadModelFile({ adapter, http, workspaceDir, detail, fileId, 
   try {
     const st = fs.lstatSync(dest);
     if (st.isFile() && !st.isSymbolicLink() && (!file.size || st.size === file.size) && looksLike(file.kind, readHead(dest), st.size)) {
-      writeSource(dir, detail, file, { name, size: st.size, sha256: sha256File(dest) }, nowIso);
-      return result(workspaceDir, dest, name, st.size, sha256File(dest), file.kind, true);
+      const sha256 = sha256File(dest);
+      writeSource(dir, detail, file, { name, size: st.size, sha256 }, nowIso);
+      return result(workspaceDir, dest, name, st.size, sha256, file.kind, true);
     }
   } catch {
     /* not downloaded yet */

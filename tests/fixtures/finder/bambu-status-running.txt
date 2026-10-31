@@ -1,5 +1,5 @@
 gcode_state: RUNNING   percent: 7%   layer: 1/41   remaining: 292 min
-file: israel-pegs-plate1.gcode.3mf
+file: demo-pegs-plate1.gcode.3mf
 nozzle: 0.4 mm stainless_steel   bed: 35C -> 35C   nozzle_temp: 219.96875C -> 220C
 wifi: -40dBm   sdcard: True
   AMS0 tray 0 (slot 1): PLA      #161616FF  remain=-1%

@@ -23,7 +23,13 @@ function kebab(text, max) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   if (!s) s = 'model';
-  if (max && s.length > max) s = s.slice(0, max).replace(/-+$/, '') || 'model';
+  if (max && s.length > max) {
+    // Cut at a word edge when there is one ("...-by-pred" not "...-by-pr").
+    const midWord = s[max] !== '-';
+    const cut = s.slice(0, max);
+    const edge = cut.lastIndexOf('-');
+    s = (midWord && edge >= 8 ? cut.slice(0, edge) : cut).replace(/-+$/, '') || 'model';
+  }
   return s;
 }
 

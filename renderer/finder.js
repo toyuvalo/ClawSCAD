@@ -84,6 +84,21 @@ function mount(ctx) {
     tab.textContent = 'Find & Print';
     switcher.appendChild(tab);
   }
+  // On a phone the header already holds three tabs; the fourth gets a short label
+  // so the switch does not run off the screen. The accessible name stays whole.
+  if (tab) {
+    tab.setAttribute('aria-label', 'Find & Print');
+    try {
+      const narrow = window.matchMedia('(max-width: 520px)');
+      const setLabel = () => {
+        tab.textContent = narrow.matches ? 'Find' : 'Find & Print';
+      };
+      setLabel();
+      if (narrow.addEventListener) narrow.addEventListener('change', setLabel);
+    } catch {
+      /* matchMedia missing: keep the long label */
+    }
+  }
   if (!document.getElementById('style-finder-link')) {
     const link = document.createElement('link');
     link.id = 'style-finder-link';
@@ -202,6 +217,7 @@ function mount(ctx) {
     body.dataset.view = 'finder';
     root.hidden = false;
     syncTab();
+    if (tab && tab.scrollIntoView) tab.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // a scrolling tab strip on 320 px phones
     if (!results.hasSearched && !input.value) setTimeout(() => input.focus(), 0);
   }
   function hideFinder() {
@@ -483,6 +499,8 @@ function mount(ctx) {
     view = 'detail';
     renderDetail();
     scroll.scrollTop = 0;
+    const back = document.getElementById('finder-back');
+    if (back) back.focus({ preventScroll: true }); // the clicked card just left the screen
     await loadDetail();
   }
 
@@ -518,10 +536,12 @@ function mount(ctx) {
     }, 0);
   }
 
-  root.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && view === 'detail' && !e.defaultPrevented && !(e.target && e.target.closest && e.target.closest('input, textarea, select'))) {
-      closeDetail();
-    }
+  // On the document, not on the root: after a card is clicked the card is gone and
+  // focus sits on <body>, so a listener on the root would never hear Escape.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || view !== 'detail' || root.hidden || body.dataset.view !== 'finder' || e.defaultPrevented) return;
+    if (e.target && e.target.closest && e.target.closest('input, textarea, select')) return;
+    closeDetail();
   });
 
   function renderDetail() {
@@ -953,6 +973,14 @@ function mount(ctx) {
     }
   }
 
+  /** "PLA Matte", not "PLA PLA Matte": the brand string usually already starts with the type. */
+  function trayLabel(t) {
+    const type = String(t.type || '');
+    const brand = String(t.brand || '');
+    if (!brand) return type;
+    return brand.toUpperCase().includes(type.toUpperCase()) ? brand : `${type} ${brand}`.trim();
+  }
+
   function printPanel() {
     const sec = h('section', { class: 'finder-section finder-print', id: 'finder-print', 'aria-labelledby': 'finder-print-h' });
     sec.appendChild(h('h3', { class: 'finder-h3', id: 'finder-print-h', text: 'Print on the P1S' }));
@@ -998,7 +1026,7 @@ function mount(ctx) {
               },
             },
             h('span', { class: 'finder-swatch', style: t.color ? `background:${t.color}` : null }),
-            h('span', { class: 'finder-tray-text' }, h('strong', { text: `Slot ${t.slot}` }), h('span', { text: t.empty ? 'empty' : [t.type, t.brand].filter(Boolean).join(' ') }), !t.empty && !supported ? h('span', { class: 'finder-file-why', text: 'No P1S preset yet' }) : t.remain != null ? h('span', { class: 'finder-dim', text: `${t.remain}% left` }) : null)
+            h('span', { class: 'finder-tray-text' }, h('strong', { text: `Slot ${t.slot}` }), h('span', { text: t.empty ? 'empty' : trayLabel(t) }), !t.empty && !supported ? h('span', { class: 'finder-file-why', text: 'No P1S preset yet' }) : t.remain != null ? h('span', { class: 'finder-dim', text: `${t.remain}% left` }) : null)
           )
         );
       }

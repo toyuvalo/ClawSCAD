@@ -3,8 +3,9 @@
 // ZipFile.testzip() does (every entry inflates and its CRC-32 matches), and write
 // a new archive (used for fixture 3MF/gcode.3mf files and for tests).
 //
-// Not supported on purpose: ZIP64, encryption, multi-disk archives. A 3MF that
-// needs them is refused with a plain message by the caller.
+// Reads ZIP64 archives (a real Fusion 360 3MF from Printables is one). Not
+// supported on purpose: encryption and multi-disk archives; a 3MF that needs
+// them is refused with a plain message by the caller.
 'use strict';
 
 const zlib = require('zlib');
@@ -12,6 +13,8 @@ const zlib = require('zlib');
 const SIG_EOCD = 0x06054b50;
 const SIG_CEN = 0x02014b50;
 const SIG_LOC = 0x04034b50;
+const SIG_Z64_LOC = 0x07064b50;
+const SIG_Z64_EOCD = 0x06064b50;
 
 let CRC_TABLE = null;
 function crc32(buf) {
@@ -40,21 +43,49 @@ function listZip(buf) {
     }
   }
   if (eocd < 0) throw new Error('not a zip: no end-of-directory record');
-  const count = buf.readUInt16LE(eocd + 10);
+  let count = buf.readUInt16LE(eocd + 10);
   let off = buf.readUInt32LE(eocd + 16);
-  if (count === 0xffff || off === 0xffffffff) throw new Error('zip64 archives are not supported');
+  if (count === 0xffff || off === 0xffffffff || buf.readUInt32LE(eocd + 12) === 0xffffffff) {
+    // ZIP64: the real counts and offsets live in a second record, found through
+    // the 20-byte locator that sits just before the end record. Fusion 360 and
+    // .NET write 3MF files this way even when they are tiny.
+    const loc = eocd - 20;
+    if (loc < 0 || buf.readUInt32LE(loc) !== SIG_Z64_LOC) throw new Error('zip64 end record is missing');
+    const z64 = Number(buf.readBigUInt64LE(loc + 8));
+    if (z64 + 56 > buf.length || buf.readUInt32LE(z64) !== SIG_Z64_EOCD) throw new Error('zip64 end record is damaged');
+    count = Number(buf.readBigUInt64LE(z64 + 32));
+    off = Number(buf.readBigUInt64LE(z64 + 48));
+  }
   const out = [];
   for (let i = 0; i < count; i++) {
     if (off + 46 > buf.length || buf.readUInt32LE(off) !== SIG_CEN) throw new Error('zip directory is damaged');
     const method = buf.readUInt16LE(off + 10);
     const crc = buf.readUInt32LE(off + 16);
-    const compSize = buf.readUInt32LE(off + 20);
-    const size = buf.readUInt32LE(off + 24);
+    let compSize = buf.readUInt32LE(off + 20);
+    let size = buf.readUInt32LE(off + 24);
     const nameLen = buf.readUInt16LE(off + 28);
     const extraLen = buf.readUInt16LE(off + 30);
     const commentLen = buf.readUInt16LE(off + 32);
-    const localOffset = buf.readUInt32LE(off + 42);
+    let localOffset = buf.readUInt32LE(off + 42);
     const name = buf.subarray(off + 46, off + 46 + nameLen).toString('utf-8');
+    if (size === 0xffffffff || compSize === 0xffffffff || localOffset === 0xffffffff) {
+      // The 64-bit values are in extra field 0x0001, in this fixed order, each
+      // present only when its 32-bit slot above holds 0xFFFFFFFF.
+      let p = off + 46 + nameLen;
+      const end = p + extraLen;
+      while (p + 4 <= end) {
+        const id = buf.readUInt16LE(p);
+        const len = buf.readUInt16LE(p + 2);
+        if (id === 1) {
+          let q = p + 4;
+          if (size === 0xffffffff) { size = Number(buf.readBigUInt64LE(q)); q += 8; }
+          if (compSize === 0xffffffff) { compSize = Number(buf.readBigUInt64LE(q)); q += 8; }
+          if (localOffset === 0xffffffff) { localOffset = Number(buf.readBigUInt64LE(q)); q += 8; }
+          break;
+        }
+        p += 4 + len;
+      }
+    }
     out.push({ name, method, compSize, size, crc, localOffset });
     off += 46 + nameLen + extraLen + commentLen;
   }

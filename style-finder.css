@@ -751,6 +751,12 @@ body[data-view="finder"] #customize {
   border-top: 1px solid var(--border-hairline);
 }
 
+.finder-section > p {
+  margin: 0 0 var(--s3);
+  font-size: var(--text-body);
+  line-height: 1.5;
+}
+
 .finder-h3 {
   margin: 0 0 var(--s3);
   font-size: var(--text-title);
@@ -1070,6 +1076,40 @@ body[data-view="finder"] #customize {
   }
   .finder-go span {
     display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  /* Four tabs must fit a phone header. This sheet is linked after web.css, so it
+     wins the tie on the padding web.css gives the tabs. The "web" badge and the
+     two zero-width separators (each still costs a flex gap) make way for them. */
+  #view-switch button {
+    padding-inline: 9px;
+    white-space: nowrap;
+  }
+  .web-badge,
+  #app-header .separator {
+    display: none;
+  }
+}
+
+@media (max-width: 380px) {
+  #view-switch button {
+    padding-inline: 6px;
+    font-size: 11px;
+  }
+  #app-header {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 340px) {
+  /* 320 px phones: let the tab strip scroll sideways. The app had no room at
+     this width before the fourth tab either. */
+  #view-switch {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 }
 

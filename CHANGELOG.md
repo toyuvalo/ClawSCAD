@@ -21,7 +21,8 @@ matching `## [x.y.z]` section below, so keep the heading format exact.
     licence, fetched). Anonymous; no login. MakerWorld downloads need a Bambu
     login this app does not have, so that button says so.
   - **Open in ClawSCAD:** copies the mesh to `meshes/<slug>.stl` (a 3MF is
-    converted to STL) and writes a NEW mesh-derived checkpoint `.scad` at the
+    converted to STL; ZIP64 3MFs such as Fusion 360 exports are read) and
+    writes a NEW mesh-derived checkpoint `.scad` at the
     workspace root (kebab-case, at most 30 characters, first line names the
     site, model id, author and licence, centred on X/Y with its base on Z=0,
     wrapped in `color()`).

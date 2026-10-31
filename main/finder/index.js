@@ -66,9 +66,14 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
     thingiverse: createThingiverseAdapter({ env }),
   };
 
+  // Tool locations: constants in slicer.js / printer.js, overridable per machine.
+  const fromEnv = (map) => Object.fromEntries(Object.entries(map).filter(([, name]) => env && env[name]).map(([key, name]) => [key, env[name]]));
+  const slicerConfig = { ...fromEnv({ bambuStudio: 'CLAWSCAD_BAMBU_STUDIO', presetDir: 'CLAWSCAD_P1S_PRESETS', assertStaged: 'CLAWSCAD_ASSERT_STAGED', python: 'CLAWSCAD_PYTHON' }), ...config.slicer };
+  const printerConfig = { ...fromEnv({ bambuCtl: 'CLAWSCAD_BAMBU_CTL', python: 'CLAWSCAD_PYTHON' }), ...config.printer };
+
   const theRunner = runner || createRunner();
-  const slicer = printing ? createSlicer({ runner: theRunner, config: config.slicer, now, sleep }) : null;
-  const printer = printing ? createPrinter({ runner: theRunner, config: config.printer, now }) : null;
+  const slicer = printing ? createSlicer({ runner: theRunner, config: slicerConfig, now, sleep }) : null;
+  const printer = printing ? createPrinter({ runner: theRunner, config: printerConfig, now }) : null;
 
   // ── jobs (slicing and printing are minutes long; the UI polls these) ────
   const jobs = new Map();

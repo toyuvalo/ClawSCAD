@@ -1,7 +1,7 @@
 // main/finder/adapters/thingiverse.js — a stub, on purpose.
 //
 // Thingiverse's API needs an application token that this app does not have, and
-// the token must live in OneCLI, never in a file. Until Yuval provisions one,
+// the token must live in OneCLI, never in a file. Until the owner provisions one,
 // this adapter exists so the site chip can say exactly what is missing instead
 // of the site silently not being there.
 //
