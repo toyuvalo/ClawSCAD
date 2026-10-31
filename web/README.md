@@ -67,6 +67,7 @@ paths, with the reason stated on screen rather than a dead control.
 | **Workbench** | **Yes — browser-native** (v0.7.0). Not a port of `renderer.js`: `web/workbench.js` is its own build on the same three.js scene, with the checkpoint list, a read-only source view, per-checkpoint 3MF/STL/PNG export, and an **Ask Claude** pane in place of the pty terminal. Meshes come from the server (`/api/checkpoint/mesh`): a sibling `.3mf`/`.stl` if the desktop app already wrote one, otherwise an OpenSCAD render, deduped per file so two tabs share one run. Works on a phone — one column under 820 px, 44 px targets on a coarse pointer, one-finger orbit / two-finger pinch. |
 | **The terminal** | **No, by design.** A live Claude Code session over `node-pty` is an interactive shell on the studio machine behind a single Access policy. Ask Claude runs `claude -p` headless and streams its log into the pane instead — Flow A's own mechanism, not a stub. |
 | **Opening a checkpoint** | **Yes** (v0.7.0). Copies the checkpoint's `.scad` over `active.scad`, which is the file `CLAUDE.md` points Claude at — the **only** thing this port writes into the workspace besides uploads and renders. `clawscad.json` is still read-only here, so rename, delete and branch are not offered (and are not greyed-out either). The list is **reconciled in memory** (v0.6.3) — see the note below. |
+| **Find & Print** | **Search, details, download, Open in ClawSCAD: yes** (v0.8). The same `main/finder/` code the desktop app runs. It queries Printables (the only live source; Thingiverse, MyMiniFactory and Cults3D are stubs that say "needs API key"; MakerWorld is not connected) at one request per second, downloads ONE STL/3MF per click from Printables into `<workspace>/models/`, and writes a mesh-derived checkpoint. `/api/model/file` and `/api/model/download` refuse `models/`, so downloads are never served back. **Print: no.** A browser tab has no route to the printer, so every `/api/finder/print*` route answers 403 `desktop-only` and the button says so. The `/api/finder/*` routes are the backend a phone app can call too. The tab, its view root and its stylesheet link are built by `renderer/finder.js` at mount (`web/index.html` is not edited), so a server that still runs an older bundle never shows a dead tab. |
 | **Locate claw-gen…** | **No.** A browser cannot browse the server's filesystem, and exposing a remote file picker behind a tunnel would be a bad idea. Set `CLAWSCAD_CLI` instead. |
 | **Editing the `.scad`** | **No, deliberately.** Customize never rewrites the file — every value goes through `-D`. Each `.scad` is an immutable checkpoint, and a UI that edited them to "customize" would be the easiest possible way to break that promise. |
 
@@ -149,3 +150,180 @@ paths, with the reason stated on screen rather than a dead control.
   the tree both contain none.
 - **No CORS headers, deliberately.** Behind Access, an allow-any-origin header
   would let any page the user visits ride their Access cookie into this API.
+
+## Find & Print API routes
+
+These routes back the web interface and the Dvlce3D Explore tab.
+All endpoints return JSON responses. Errors do not throw; they return `{ ok: false, error: { code, message } }`.
+
+### `GET /api/finder/capabilities`
+Returns the operational state of search sources and printer integration.
+- **Parameters**: None.
+- **Response** (200):
+  ```json
+  {
+    "ok": true,
+    "sources": {
+      "printables": { "ready": true, "keyRequired": false, "reason": null },
+      "thingiverse": { "ready": false, "keyRequired": true, "reason": "needs an API key" },
+      "myminifactory": { "ready": false, "keyRequired": true, "reason": "needs an API key" },
+      "cults3d": { "ready": false, "keyRequired": true, "reason": "needs an API key" }
+    },
+    "printing": false
+  }
+  ```
+- **Notes**: In the web build, `printing` is always `false`.
+
+### `GET /api/finder/search?q={query}&sites={sites}&page={page}&limit={limit}`
+Searches 3D models across enabled sources.
+- **Query parameters**:
+  - `q` (required, string): Search query text (trimmed, up to 200 characters). Returns 400 if empty.
+  - `sites` (optional, string): Comma-separated list of sources (e.g. `printables`). Default is `printables`.
+  - `page` (optional, integer): Zero-based page offset (default: `0`).
+  - `limit` (optional, integer): Results per page (default: `24`).
+- **Response** (200):
+  ```json
+  {
+    "ok": true,
+    "query": "gridfinity",
+    "page": 0,
+    "limit": 24,
+    "items": [
+      {
+        "id": "1685835",
+        "site": "printables",
+        "title": "Gridfinity Box",
+        "author": "Designer",
+        "description": "Plain text summary",
+        "url": "https://www.printables.com/model/1685835-...",
+        "coverUrl": "https://media.printables.com/...",
+        "downloadCount": 120,
+        "likeCount": 45,
+        "fileFormats": ["stl"],
+        "licence": {
+          "code": "CC-BY-4.0",
+          "name": "Creative Commons Attribution 4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/",
+          "summary": "You can share and adapt with credit."
+        }
+      }
+    ],
+    "sites": {
+      "printables": {
+        "status": "ok",
+        "count": 1,
+        "total": 1,
+        "cached": false,
+        "stale": false,
+        "ageMs": 0,
+        "error": null
+      }
+    }
+  }
+  ```
+- **Error Responses**:
+  - 400 `{ ok: false, error: { code: "empty-query", message: "Enter a search term." } }`
+
+### `GET /api/finder/detail?site={site}&id={id}`
+Fetches full model metadata, images, and downloadable file entries.
+- **Query parameters**:
+  - `site` (required, string): Target source site (e.g. `printables`).
+  - `id` (required, string): Model identifier.
+- **Response** (200):
+  ```json
+  {
+    "ok": true,
+    "detail": {
+      "id": "1685835",
+      "site": "printables",
+      "title": "Gridfinity Box",
+      "author": "Designer",
+      "description": "Full description text",
+      "url": "https://www.printables.com/model/1685835-...",
+      "coverUrl": "https://media.printables.com/...",
+      "images": ["https://media.printables.com/..."],
+      "files": [
+        {
+          "id": "9901",
+          "name": "box.stl",
+          "size": 1048576,
+          "format": "stl",
+          "url": "https://media.printables.com/..."
+        }
+      ],
+      "licence": {
+        "code": "CC-BY-4.0",
+        "name": "Creative Commons Attribution 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "summary": "You can share and adapt with credit."
+      }
+    }
+  }
+  ```
+- **Error Responses**:
+  - 404 `{ ok: false, error: { code: "not-found", message: "Model not found." } }`
+  - 502 `{ ok: false, error: { code: "upstream-error", message: "..." } }`
+
+### `POST /api/finder/download`
+Downloads one selected model file into `<workspace>/models/<site>-<id>/`. Writes provenance metadata into `<workspace>/models/<site>-<id>/source.json`.
+- **Headers**: `Content-Type: application/json`
+- **Body**:
+  ```json
+  {
+    "site": "printables",
+    "id": "1685835",
+    "fileId": "9901"
+  }
+  ```
+- **Response** (200):
+  ```json
+  {
+    "ok": true,
+    "file": {
+      "path": "models/printables-1685835/box.stl",
+      "name": "box.stl",
+      "size": 1048576,
+      "format": "stl",
+      "site": "printables",
+      "id": "1685835",
+      "fileId": "9901"
+    }
+  }
+  ```
+- **Notes**: Files under `<workspace>/models/` are protected. They are not served by `/api/model/file` or `/api/model/download`.
+
+### `POST /api/finder/open`
+Prepares a downloaded model for CAD editing in ClawSCAD:
+1. Copies the file to `<workspace>/meshes/<slug>.stl` (converts 3MF to binary STL if needed).
+2. Generates a new OpenSCAD checkpoint `.scad` that imports the mesh.
+- **Headers**: `Content-Type: application/json`
+- **Body**:
+  ```json
+  {
+    "site": "printables",
+    "id": "1685835",
+    "path": "models/printables-1685835/box.stl"
+  }
+  ```
+- **Response** (200):
+  ```json
+  {
+    "ok": true,
+    "scadPath": "printables-1685835-box.scad",
+    "meshPath": "meshes/printables-1685835-box.stl",
+    "checkpointId": null
+  }
+  ```
+
+### `GET` / `POST /api/finder/print*`
+Printer routes require the desktop environment.
+- **Response** (403):
+  ```json
+  {
+    "ok": false,
+    "error": {
+      "code": "desktop-only",
+      "message": "Printing needs the desktop app: the web build cannot reach the printer on your network."
+    }
+  }
+  ```

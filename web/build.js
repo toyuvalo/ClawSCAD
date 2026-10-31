@@ -16,10 +16,14 @@ const esbuild = require(path.join(__dirname, '..', 'node_modules', 'esbuild'));
 
 const watch = process.argv.includes('--watch');
 const minify = process.argv.includes('--minify');
+// --outdir <dir> writes app.js there instead of web/dist/. A test uses it so that
+// building never replaces the bundle a running server is serving.
+const outdirAt = process.argv.indexOf('--outdir');
+const outdir = outdirAt >= 0 && process.argv[outdirAt + 1] ? path.resolve(process.argv[outdirAt + 1]) : path.join(__dirname, 'dist');
 
 const options = {
   entryPoints: [path.join(__dirname, 'entry.js')],
-  outfile: path.join(__dirname, 'dist', 'app.js'),
+  outfile: path.join(outdir, 'app.js'),
   bundle: true,
   // ESM + browser, matching the desktop app's own build:renderer target, so
   // renderer/studio.js is compiled exactly the way it is compiled for Electron.

@@ -26,6 +26,9 @@
        the body[data-view] switch, and equal-specificity rules must win over
        every earlier package sheet. It may not restyle a workbench selector. -->
   <link rel="stylesheet" href="./style-studio.css">
+  <!-- v0.8 Find & Print. renderer/finder.js also adds this link itself if it is
+       missing (id style-finder-link), the way onboarding does. -->
+  <link rel="stylesheet" href="./style-finder.css" id="style-finder-link">
 </head>
 <body>
   <div id="app">
@@ -56,6 +59,9 @@
       <div id="view-switch" role="tablist" aria-label="View">
         <button id="view-studio" role="tab" aria-selected="true" aria-controls="studio">Make</button>
         <button id="view-workbench" role="tab" aria-selected="false" aria-controls="main-content">Workbench</button>
+        <!-- v0.8: a third view. renderer/finder.js owns its click handler and
+             watches body[data-view], so studio.js needs no knowledge of it. -->
+        <button id="view-finder" role="tab" aria-selected="false" aria-controls="finder">Find &amp; Print</button>
       </div>
       <span class="separator"></span>
       <!-- .3mf first and marked default: it is the deliverable standard, and
@@ -102,6 +108,10 @@
          still counts as "visible" to Playwright while silently intercepting
          every click, which would turn thirty honest specs into liars. -->
     <div id="studio" hidden></div>
+
+    <!-- v0.8 Find & Print. Built by renderer/finder.js; empty and hidden until
+         then. A sibling of #studio and #main-content, like them. -->
+    <div id="finder" hidden></div>
 
     <!-- Main content area -->
     <div id="main-content">

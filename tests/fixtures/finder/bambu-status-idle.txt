@@ -1,0 +1,9 @@
+gcode_state: IDLE   percent: 0%   layer: 0/0   remaining: 0 min
+file: -
+nozzle: 0.4 mm stainless_steel   bed: 24C -> 0C   nozzle_temp: 26C -> 0C
+wifi: -40dBm   sdcard: True
+  AMS0 tray 0 (slot 1): PLA      #161616FF  remain=-1%
+  AMS0 tray 1 (slot 2): PETG     #D6CCA3FF PETG Basic remain=18%
+  AMS0 tray 2 (slot 3): empty
+  AMS0 tray 3 (slot 4): PLA      #68724DFF PLA Matte remain=88%
+HMS errors: none

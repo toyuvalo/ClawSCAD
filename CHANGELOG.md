@@ -5,6 +5,55 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.8.0] - 2026-10-31
+
+### Added
+
+- **Find & Print.** A third tab next to Make and Workbench, in the desktop app
+  and the web build. One search box queries Printables (the only live source)
+  and shows cards (cover, title, author, likes, downloads, licence, site
+  badge). Thingiverse, MyMiniFactory and Cults3D are listed as stubs that say
+  "needs API key" and never make a request. MakerWorld is deliberately not
+  connected.
+  - **Details.** Gallery, description (plain text), author, licence with a
+    plain-words summary, the file list, and a link back to the source page.
+  - **Download** (Printables): one STL or 3MF per click into
+    `<workspace>/models/printables-<id>/` with a `source.json` (url, author,
+    licence, fetched). Anonymous; no login.
+  - **Open in ClawSCAD:** copies the mesh to `meshes/<slug>.stl` (a 3MF is
+    converted to STL; ZIP64 3MFs such as Fusion 360 exports are read) and
+    writes a NEW mesh-derived checkpoint `.scad` at the
+    workspace root (kebab-case, at most 30 characters, first line names the
+    site, model id, author and licence, centred on X/Y with its base on Z=0,
+    wrapped in `color()`).
+  - **Print on P1S (desktop only):** slices with the Bambu Studio CLI using the
+    flat P1S presets and a port of the `run_bambu()` hang guard; shows the AMS
+    slots from `bambu_ctl.py status`; needs printer state IDLE or FINISH; shows
+    a fresh chamber snapshot and needs "the bed is clear" ticked before it
+    calls `bambu_ctl.py print`; follows progress by polling `status`. The web
+    build shows the button disabled with the reason.
+- **Politeness.** At most one request per second per site, a 15-minute search
+  cache and 1-hour detail cache (memory plus files under app userData), the
+  last good answer shown (marked old) when a site stops answering, and one
+  source failing never hides another's results. The app names itself in its
+  `User-Agent`; it imitates no other program. Downloaded model files are
+  never served back by the web server (`/api/model/file` and
+  `/api/model/download` refuse `models/`).
+- **Offline mode for tests.** `CLAWSCAD_FINDER_FIXTURES=<dir>` answers
+  Printables from recorded responses and replaces the slicer and printer tools with
+  a fake that starts no process.
+
+- **One backend for every client.** All of it is plain modules in
+  `main/finder/` (adapters, normalizer, cache, rate limiter, download,
+  slicing, printer). `web/server.js` serves them at `/api/finder/*`, so a
+  phone app can call the same backend. Printing stays desktop-only.
+
+### Changed
+
+- `web/build.js` accepts `--outdir <dir>` and `web/server.js` accepts
+  `CLAWSCAD_WEB_DIST`, so a test can build and serve a bundle without
+  overwriting the one a running server is serving.
+
 ## [0.7.6] - 2026-10-30
 
 ### Security

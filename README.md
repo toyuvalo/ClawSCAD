@@ -115,6 +115,33 @@ it is badged `GEN` in the checkpoint tree with a diamond node. Branch it and `di
 parametric features into the import; never edit it in place. Anything tolerance-critical (snap
 fits, threads, mating parts) should be modelled parametrically from the start.
 
+## Find & Print
+
+The **Find & Print** tab searches Printables from one box, shows
+the results as cards, and gives every model a page with its pictures,
+description, author, licence and file list.
+
+- **Open in ClawSCAD** downloads one STL or 3MF (Printables only) into
+  `<workspace>/models/printables-<id>/` with a `source.json` (url, author,
+  licence, date), copies the mesh to `meshes/` and writes a NEW mesh-derived
+  checkpoint `.scad` that `import()`s it, centred on X/Y with its base on Z=0.
+- **Print on P1S** (desktop only) picks an AMS slot from `bambu_ctl.py status`,
+  slices with the Bambu Studio CLI and the flat P1S presets, shows a fresh
+  chamber picture, and sends the print only after you tick "The bed is clear".
+  The printer must be IDLE or FINISH.
+- **Other sources.** Thingiverse, MyMiniFactory and Cults3D need an API key that
+  this app does not have, so they appear as chips that say "needs API key" and
+  make no request. MakerWorld is not connected.
+- It asks each site at most once per second, keeps answers for 15 minutes (a
+  model page for an hour), and never serves downloaded files back over the web
+  build. Keep the author credit and the licence; files are for your own use.
+
+Needs on the desktop PC for printing: Bambu Studio, the flat presets in
+`E:\the-workshop\_3mf\flat-presets-p1s\`, Python and `E:\dev-tools\bambu-ctl\bambu_ctl.py`.
+Those are the defaults; set `CLAWSCAD_BAMBU_STUDIO`, `CLAWSCAD_P1S_PRESETS`,
+`CLAWSCAD_BAMBU_CTL` or `CLAWSCAD_PYTHON` to move them. The Print button says
+what is missing when something is.
+
 ## Install
 
 ```bash

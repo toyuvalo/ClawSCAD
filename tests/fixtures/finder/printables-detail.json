@@ -1,0 +1,159 @@
+{
+ "data": {
+  "print": {
+   "id": "543553",
+   "name": "Gridfinity Storage Box by Pred (now parametric)",
+   "slug": "gridfinity-storage-box-by-pred-now-parametric",
+   "summary": "Parametric (almost) fully printed storage box for Gridfinity bins. Organize your organizers!",
+   "description": "<p>IMPORTANT Read the description carefully before print! Check the changelog at the bottom before printing, there might be updates to the model The original model and the parametric one are not stackable with each other!&n</p>",
+   "datePublished": "2023-11-09T17:22:23.988836+00:00",
+   "likesCount": 17388,
+   "downloadCount": 57850,
+   "tags": [
+    {
+     "name": "parametric"
+    },
+    {
+     "name": "fusion360"
+    },
+    {
+     "name": "stackable"
+    },
+    {
+     "name": "storagebox"
+    },
+    {
+     "name": "storagecontainer"
+    },
+    {
+     "name": "gridfinity"
+    }
+   ],
+   "category": {
+    "id": "50",
+    "name": "Organizers"
+   },
+   "user": {
+    "id": "457770",
+    "publicUsername": "Pred",
+    "avatarFilePath": "media/auth/avatars/73/73b61927-a29d-4341-8ddc-1bcc56398038.png"
+   },
+   "license": {
+    "id": "3",
+    "name": "Creative Commons — Attribution  — Noncommercial",
+    "abbreviation": "CC-BY-NC",
+    "content": "<a rel=\"license\" target=\"_blank\" href=\"http://creativecommons.org/licenses/by-nc/4.0/\">\r\n<img alt=\"Creative Commons License\" style=\"border-width:0\" src=\"https://i.creativecommons.org/l/by-nc/4.0/88x31.png\"  align=\"right\"/></a>\r\n<br>\r\nThis work is licensed under a \r\n</br>\r\n <a rel=\"license\" target=\"_",
+    "disallowRemixing": false
+   },
+   "stls": [
+    {
+     "id": "2705077",
+     "name": "GridfinityStorageBox_Parametric v1.1.f3d",
+     "fileSize": 6932915,
+     "filePreviewPath": "",
+     "folder": "Parametric V1 - Common Files and F3D",
+     "note": "Fusion 360",
+     "order": 0
+    },
+    {
+     "id": "2496570",
+     "name": "GridfinityStorageBox_Hinge.3mf",
+     "fileSize": 240923,
+     "filePreviewPath": "media/prints/543553/stls/4707340_9e32d894-5f51-40c1-a236-548f5923d7fe_5436161b-072b-4828-94d6-f196b01924d1/gridfinitystoragebox_hinge_preview.png",
+     "folder": "Parametric V1 - Common Files and F3D",
+     "note": "2pcs per box. Slightly redesigned, use this if the old one does not work for you!",
+     "order": 1
+    },
+    {
+     "id": "2496626",
+     "name": "GridfinityStorageBox_HandlePin.3mf",
+     "fileSize": 144827,
+     "filePreviewPath": "media/prints/543553/stls/4707437_6753eb76-b57c-4abb-9e80-8eb626a7275b_636d787b-06ed-4148-b898-ff6ee59ac5be/gridfinitystoragebox_handlepin_preview.png",
+     "folder": "Parametric V1 - Common Files and F3D",
+     "note": "2pcs per box.",
+     "order": 5
+    },
+    {
+     "id": "2498547",
+     "name": "GridfinityStorageBox_4xY_Label.step",
+     "fileSize": 48576,
+     "filePreviewPath": "media/prints/543553/previews/cb4d5477-49a7-4f89-bd65-9e9f0c41823c.png",
+     "folder": "Parametric V1 - Common Files and F3D",
+     "note": "",
+     "order": 6
+    },
+    {
+     "id": "9990001",
+     "name": "cube-20mm.stl",
+     "fileSize": 684,
+     "filePreviewPath": "",
+     "folder": "",
+     "note": "Fixture file (synthetic)",
+     "order": 9
+    }
+   ],
+   "gcodes": [
+    {
+     "id": "176053",
+     "name": "GridfinityStorageBox_5x4x6U_Base_HandlePin_0.4n_0.3mm_PETG_MK4_10h15m.gcode",
+     "fileSize": 15643865
+    },
+    {
+     "id": "176048",
+     "name": "GridfinityStorageBox_5x4_Lid_0.4n_0.3mm_PETG_MK4_5h48m.gcode",
+     "fileSize": 7877372
+    },
+    {
+     "id": "176050",
+     "name": "GridfinityStorageBox_5xY_Handle_Latch_Hinge_0.4n_0.2mm_PETG_MK4_3h27m.gcode",
+     "fileSize": 10714681
+    },
+    {
+     "id": "176047",
+     "name": "GridfinityStorageBox_5xY_Label_M3_0.4n_0.2mm_PETG_MK4_11m.gcode",
+     "fileSize": 432869
+    }
+   ],
+   "slas": [],
+   "otherFiles": [],
+   "downloadPacks": [
+    {
+     "id": "2867831",
+     "name": "",
+     "fileSize": 32757401,
+     "fileType": "MODEL_FILES"
+    },
+    {
+     "id": "2867832",
+     "name": "",
+     "fileSize": 8845277,
+     "fileType": "PRINT_FILES"
+    },
+    {
+     "id": "2867833",
+     "name": "",
+     "fileSize": 41110764,
+     "fileType": "OTHER_FILES"
+    }
+   ],
+   "images": [
+    {
+     "filePath": "media/prints/543553/images/4458653_d5337ae3-6bdd-4001-ad56-ae21b014991e/20230817_171603.jpg",
+     "rotation": 0
+    },
+    {
+     "filePath": "media/prints/543553/images/4458654_d5b1246c-a61c-4c5e-a224-ef2c20b0664d/20230817_171629.jpg",
+     "rotation": 0
+    },
+    {
+     "filePath": "media/prints/543553/images/4373494_973e9542-c061-40d6-a131-9f03b1aec3d3/20230804_145956.jpg",
+     "rotation": 0
+    },
+    {
+     "filePath": "media/prints/543553/images/4373492_608dff21-dd92-42b4-b76f-b88aa26b6ba6/20230804_150026.jpg",
+     "rotation": 0
+    }
+   ]
+  }
+ }
+}

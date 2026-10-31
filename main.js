@@ -1617,6 +1617,8 @@ ipcMain.handle('pipeline:read-image', (event, filePath) => {
   require('./main/presets.js').register(ipcMain, deps);
   require('./main/categories.js').register(ipcMain, deps);
   require('./main/tools.js').register(ipcMain, deps);
+  // v0.8 Find & Print. Behaviour lives in main/finder/ (shared with web/server.js).
+  require('./main/model-finder.js').register(ipcMain, deps);
 }
 
 ipcMain.handle('app:get-version', () => APP_VERSION);

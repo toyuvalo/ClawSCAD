@@ -1,0 +1,1135 @@
+/* style-finder.css — v0.8 "Find & Print". Owned by renderer/finder.js.
+
+   Built only from style.css's :root token layer, so it sits in the same app as
+   the Studio and the Workbench: navy-violet ground, ONE blue accent (selection,
+   focus, the primary action), hairline borders, sentence case, JetBrains Mono for
+   the small labels. No gradients, no glow, no ambient motion. A disabled control
+   is a different COLOUR (the Studio's rule: opacity stays 1) and the reason is
+   written next to it.
+
+   Contrast, measured on the actual grounds (WCAG relative luminance):
+     --fg            #c8c8dc on --surface-3 #0e0e22      11.0 : 1   titles
+     --fg-secondary  #9a9ac4 on --surface-3               7.0 : 1   authors, prose
+     --fg-muted      #7f7fae on --surface-3               4.9 : 1   stats, hints
+     #ffffff         on #3570d8 (primary)                 4.7 : 1   primary label
+     #ffffff         on #2f64c4 (primary, hover)          5.7 : 1
+     --fg-muted      on --studio-off #17172e              4.6 : 1   disabled label
+     --accent #4488ff on --surface-2 #0d0d1a              5.9 : 1   focus ring, links (3:1 needed) */
+
+#finder {
+  --finder-max: 1240px;
+  --finder-gutter: clamp(var(--s4), 3.5vw, 48px);
+  --finder-primary: #3570d8;
+  --finder-primary-hover: #2f64c4;
+  --finder-off: #17172e;
+  --finder-card-w: 232px;
+
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-2);
+  color: var(--fg);
+  color-scheme: dark;
+  font-family: var(--font-ui);
+  font-size: var(--text-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The three-way view switch. studio.js and entry.js each rewrite body[data-view];
+   this block makes the Finder the only visible view when it is the current one,
+   and invisible whenever it is not — whichever of them last wrote the attribute. */
+#finder[hidden],
+body:not([data-view="finder"]) #finder {
+  display: none;
+}
+
+body[data-view="finder"] #studio,
+body[data-view="finder"] #main-content,
+body[data-view="finder"] #customize {
+  display: none !important;
+}
+
+#finder [hidden] {
+  display: none !important;
+}
+
+#finder button,
+#finder input {
+  font-family: inherit;
+}
+
+#finder :disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.finder-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: var(--s5) var(--finder-gutter) var(--s6);
+}
+
+.finder-scroll > * {
+  width: 100%;
+  max-width: var(--finder-max);
+  margin-inline: auto;
+}
+
+.finder-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.finder-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.finder-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-control);
+  border-radius: 5px;
+}
+
+/* ── Search bar ─────────────────────────────────────────────────────────── */
+
+.finder-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+
+.finder-search {
+  display: flex;
+  gap: var(--s2);
+  align-items: stretch;
+}
+
+.finder-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  padding: 0 var(--s4);
+  background: var(--surface-3);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-control);
+  color: var(--fg);
+  font-size: var(--text-title);
+  user-select: text;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.finder-input::placeholder {
+  color: var(--fg-muted);
+}
+
+.finder-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(68, 136, 255, 0.28);
+}
+
+.finder-go {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s4);
+  height: 40px;
+}
+
+.finder-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.finder-btn,
+.finder-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: 36px;
+  padding: 0 var(--s4);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-control);
+  background: var(--surface-3);
+  color: var(--fg);
+  font-size: var(--text-ui);
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.finder-go,
+.finder-btn-primary {
+  background: var(--finder-primary);
+  border-color: var(--finder-primary);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.finder-btn-ghost {
+  background: transparent;
+  border-color: var(--border-panel);
+  color: var(--fg-secondary);
+}
+
+.finder-btn-small {
+  min-height: 28px;
+  padding: 0 var(--s3);
+  font-size: var(--text-body);
+}
+
+.finder-btn:active,
+.finder-go:active,
+.finder-chip:active {
+  transform: scale(0.98);
+}
+
+.finder-btn:disabled,
+.finder-go:disabled {
+  background: var(--finder-off);
+  border-color: var(--border-control);
+  color: var(--fg-muted);
+  box-shadow: none;
+  transform: none;
+}
+
+.finder-btn:focus-visible,
+.finder-go:focus-visible,
+.finder-chip:focus-visible,
+.finder-card:focus-visible,
+.finder-back:focus-visible,
+.finder-thumb:focus-visible,
+.finder-file-btn:focus-visible,
+.finder-tray:focus-visible,
+.finder-linkbtn:focus-visible,
+.finder-link:focus-visible,
+.finder-check input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .finder-go:hover,
+  .finder-btn-primary:hover:not(:disabled) {
+    background: var(--finder-primary-hover);
+    border-color: var(--finder-primary-hover);
+  }
+  .finder-btn-secondary:hover:not(:disabled),
+  .finder-btn-small:hover:not(:disabled) {
+    background: var(--hover-wash);
+    border-color: var(--border-hover);
+  }
+  .finder-btn-ghost:hover {
+    color: var(--fg);
+    border-color: var(--border-hover);
+  }
+  .finder-card:hover {
+    border-color: var(--border-hover);
+    background: var(--surface-raised);
+  }
+  .finder-chip:hover:not(:disabled):not(.is-on) {
+    background: var(--hover-wash);
+    border-color: var(--border-hover);
+    color: var(--fg);
+  }
+  .finder-file-btn:hover,
+  .finder-tray:hover:not(.is-locked) {
+    border-color: var(--border-hover);
+    background: var(--hover-wash);
+  }
+  .finder-thumb:hover {
+    border-color: var(--border-hover);
+  }
+}
+
+/* ── Chips ──────────────────────────────────────────────────────────────── */
+
+.finder-chips,
+.finder-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+}
+
+.finder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 30px;
+  padding: 0 var(--s3);
+  background: var(--surface-3);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-control);
+  color: var(--fg-secondary);
+  font-size: var(--text-body);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.finder-chip.is-on {
+  background: var(--active-wash);
+  border-color: var(--border-accent);
+  color: var(--fg);
+}
+
+.finder-chip.is-unavailable {
+  background: var(--finder-off);
+  color: var(--fg-muted);
+  border-style: dashed;
+}
+
+.finder-chip-why {
+  font-family: var(--font-mono);
+  font-size: var(--text-chrome);
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+
+.finder-examples-label {
+  color: var(--fg-muted);
+  font-size: var(--text-body);
+}
+
+/* ── Status + notes ─────────────────────────────────────────────────────── */
+
+.finder-status {
+  min-height: 18px;
+  margin: 0 0 var(--s3);
+  color: var(--fg-muted);
+  font-size: var(--text-body);
+}
+
+.finder-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.finder-notes:not(:empty) {
+  margin-bottom: var(--s4);
+}
+
+.finder-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-control);
+  background: var(--surface-3);
+  color: var(--fg-secondary);
+  font-size: var(--text-body);
+}
+
+.finder-note .finder-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.finder-note.is-error {
+  background: var(--danger-surface);
+  border-color: var(--danger);
+  color: var(--fg);
+}
+.finder-note.is-error .finder-icon {
+  color: var(--danger);
+}
+.finder-note.is-warn .finder-icon {
+  color: var(--warn);
+}
+.finder-note.is-info .finder-icon {
+  color: var(--geometry);
+}
+
+.finder-note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── Intro + empty ──────────────────────────────────────────────────────── */
+
+.finder-intro {
+  padding: clamp(var(--s5), 9vh, 96px) 0 var(--s5);
+  max-width: 62ch;
+}
+
+.finder-intro-title {
+  margin: 0 0 var(--s3);
+  font-size: var(--text-display);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+.finder-intro-sub {
+  margin: 0 0 var(--s5);
+  color: var(--fg-secondary);
+  font-size: var(--text-title);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.finder-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s6) var(--s5);
+  border: 1px dashed var(--border-control);
+  border-radius: var(--r-panel);
+  color: var(--fg-secondary);
+}
+.finder-empty strong {
+  color: var(--fg);
+  font-size: var(--text-title);
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+
+.finder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--finder-card-w), 1fr));
+  gap: var(--s4);
+}
+
+.finder-grid:empty {
+  display: none;
+}
+
+.finder-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  background: var(--surface-3);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-panel);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  touch-action: manipulation;
+  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+
+.finder-card:active {
+  transform: scale(0.99);
+}
+
+.finder-card.is-skeleton {
+  cursor: default;
+  pointer-events: none;
+}
+
+.finder-card-cover {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--surface-viewport);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.finder-card-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.finder-nopic {
+  color: var(--fg-muted);
+  font-size: var(--text-body);
+}
+
+.finder-badge {
+  position: absolute;
+  top: var(--s2);
+  left: var(--s2);
+  z-index: 1;
+  padding: 3px 7px;
+  background: rgba(8, 8, 26, 0.86);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-inline);
+  color: var(--fg);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.finder-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--s3);
+  min-width: 0;
+}
+
+.finder-card-title {
+  margin: 0;
+  color: var(--fg);
+  font-size: var(--text-ui);
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.finder-card-author {
+  color: var(--fg-secondary);
+  font-size: var(--text-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finder-card-meta,
+.finder-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s1);
+  color: var(--fg-muted);
+  font-size: var(--text-meta);
+}
+
+.finder-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.finder-licence {
+  max-width: 100%;
+  padding: 1px 6px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-inline);
+  color: var(--fg-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-chrome);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finder-licence.is-big {
+  font-size: var(--text-meta);
+  padding: 2px 8px;
+}
+
+.finder-skel-line {
+  height: 11px;
+  border-radius: 3px;
+  background: var(--border-panel);
+}
+.finder-skel-line.is-short {
+  width: 55%;
+}
+
+.finder-more {
+  display: flex;
+  justify-content: center;
+  padding: var(--s5) 0 0;
+}
+.finder-more:empty {
+  display: none;
+}
+
+/* ── Detail ─────────────────────────────────────────────────────────────── */
+
+.finder-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 32px;
+  margin: 0 0 var(--s4) calc(-1 * var(--s2));
+  padding: 0 var(--s3) 0 var(--s2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  color: var(--fg-secondary);
+  font-size: var(--text-ui);
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .finder-back:hover {
+    color: var(--fg);
+    background: var(--hover-wash);
+  }
+}
+
+.finder-detail-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr);
+  gap: var(--s5);
+  align-items: start;
+}
+
+.finder-gallery {
+  min-width: 0;
+}
+
+.finder-card-cover.is-main {
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-panel);
+}
+
+.finder-thumbs {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  overflow-x: auto;
+  padding-bottom: var(--s1);
+}
+
+.finder-thumb {
+  flex: 0 0 auto;
+  width: 72px;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  background: var(--surface-viewport);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-control);
+  overflow: hidden;
+  cursor: pointer;
+}
+.finder-thumb.is-on {
+  border-color: var(--accent);
+}
+.finder-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.finder-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.finder-info-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+.finder-info-top .finder-badge {
+  position: static;
+}
+.finder-category {
+  color: var(--fg-muted);
+  font-size: var(--text-body);
+}
+
+.finder-title {
+  margin: 0;
+  font-size: var(--text-display);
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.finder-byline {
+  color: var(--fg-secondary);
+  font-size: var(--text-ui);
+  overflow-wrap: anywhere;
+}
+.finder-dim {
+  color: var(--fg-muted);
+}
+
+.finder-link,
+.finder-linkbtn {
+  color: var(--accent-hover);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.finder-btn.finder-link,
+.finder-btn.finder-btn-ghost {
+  text-decoration: none;
+}
+
+.finder-licenceblock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  padding: var(--s3);
+  background: var(--surface-3);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-panel);
+}
+.finder-licence-note {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--fg-secondary);
+  font-size: var(--text-body);
+  line-height: 1.5;
+}
+.finder-licence-link {
+  font-size: var(--text-body);
+}
+
+.finder-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+.finder-actionrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.finder-why,
+.finder-actionnote {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: 1.5;
+  color: var(--fg-secondary);
+  overflow-wrap: anywhere;
+}
+.finder-actionnote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+.finder-actionnote.is-ok .finder-icon {
+  color: var(--geometry);
+}
+.finder-actionnote.is-error .finder-icon {
+  color: var(--danger);
+}
+.finder-actionnote .finder-icon {
+  margin-top: 2px;
+}
+
+.finder-loading {
+  margin: var(--s4) 0;
+  color: var(--fg-muted);
+}
+
+.finder-section {
+  margin-top: var(--s5);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.finder-section > p {
+  margin: 0 0 var(--s3);
+  font-size: var(--text-body);
+  line-height: 1.5;
+}
+
+.finder-h3 {
+  margin: 0 0 var(--s3);
+  font-size: var(--text-title);
+  font-weight: 650;
+  color: var(--fg);
+}
+
+.finder-h4 {
+  margin: 0 0 var(--s2);
+  font-size: var(--text-ui);
+  font-weight: 650;
+  color: var(--fg);
+}
+
+/* files */
+
+.finder-filelist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.finder-file-btn {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: var(--s3);
+  align-items: start;
+  padding: var(--s2) var(--s3);
+  text-align: left;
+  background: var(--surface-3);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-control);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.finder-file.is-on .finder-file-btn {
+  border-color: var(--border-accent);
+  background: var(--active-wash);
+}
+.finder-file.is-locked .finder-file-btn {
+  cursor: default;
+  color: var(--fg-muted);
+  background: var(--finder-off);
+}
+.finder-file-kind {
+  font-family: var(--font-mono);
+  font-size: var(--text-chrome);
+  color: var(--fg-secondary);
+  padding-top: 2px;
+}
+.finder-file-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.finder-file-name {
+  overflow-wrap: anywhere;
+}
+.finder-file-note {
+  color: var(--fg-muted);
+  font-size: var(--text-meta);
+  overflow-wrap: anywhere;
+}
+.finder-file-why {
+  color: var(--fg-muted);
+  font-size: var(--text-meta);
+}
+.finder-file-size {
+  color: var(--fg-muted);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+
+/* plates */
+
+.finder-plategrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--s3);
+}
+.finder-plate {
+  display: flex;
+  gap: var(--s3);
+  padding: var(--s2);
+  background: var(--surface-3);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-control);
+  min-width: 0;
+}
+.finder-plate img,
+.finder-plate-blank {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  border-radius: var(--r-inline);
+  background: var(--surface-viewport);
+  object-fit: cover;
+}
+.finder-plate-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--text-meta);
+  color: var(--fg-secondary);
+}
+.finder-plate-text strong {
+  color: var(--fg);
+  font-size: var(--text-body);
+}
+
+/* about */
+
+.finder-prose {
+  max-width: 72ch;
+  color: var(--fg-secondary);
+  font-size: var(--text-ui);
+  line-height: 1.6;
+}
+.finder-prose p {
+  margin: 0 0 var(--s3);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.finder-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+.finder-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-inline);
+  color: var(--fg-muted);
+  font-size: var(--text-meta);
+}
+
+/* ── Print panel ────────────────────────────────────────────────────────── */
+
+.finder-print {
+  padding: var(--s4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-panel);
+}
+
+.finder-step {
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--border-hairline);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+.finder-step:first-of-type {
+  border-top: 0;
+}
+
+.finder-printer-line {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--fg-secondary);
+  font-size: var(--text-body);
+}
+
+.finder-state {
+  padding: 1px 8px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-inline);
+  font-family: var(--font-mono);
+  font-size: var(--text-chrome);
+  color: var(--fg);
+}
+.finder-state.is-ready {
+  border-color: var(--geometry);
+  color: var(--geometry);
+}
+.finder-state.is-busy {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.finder-trays {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s2);
+  width: 100%;
+}
+.finder-tray {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  text-align: left;
+  background: var(--surface-3);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-control);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.finder-tray.is-on {
+  border-color: var(--border-accent);
+  background: var(--active-wash);
+}
+.finder-tray.is-locked {
+  cursor: default;
+  background: var(--finder-off);
+  color: var(--fg-muted);
+}
+.finder-swatch {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+}
+.finder-tray-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  font-size: var(--text-meta);
+  overflow-wrap: anywhere;
+}
+.finder-tray-text strong {
+  font-size: var(--text-body);
+}
+
+.finder-snapshot {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--r-panel);
+}
+
+.finder-check {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 36px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.finder-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.finder-progress {
+  margin: 0;
+  color: var(--fg-secondary);
+  font-size: var(--text-body);
+}
+
+.finder-running {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  width: 100%;
+}
+.finder-meter {
+  width: 100%;
+  height: 6px;
+  background: var(--border-panel);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.finder-meter-fill {
+  height: 100%;
+  background: var(--geometry);
+}
+
+/* ── Touch + small screens ──────────────────────────────────────────────── */
+
+@media (pointer: coarse) {
+  .finder-input {
+    font-size: max(16px, 1rem);
+    height: 44px;
+  }
+  .finder-btn,
+  .finder-go,
+  .finder-chip,
+  .finder-back {
+    min-height: 44px;
+  }
+  .finder-go {
+    height: 44px;
+  }
+  .finder-file-btn,
+  .finder-tray {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 860px) {
+  .finder-detail-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .finder-go span {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  /* Four tabs must fit a phone header. This sheet is linked after web.css, so it
+     wins the tie on the padding web.css gives the tabs. The "web" badge and the
+     two zero-width separators (each still costs a flex gap) make way for them. */
+  #view-switch button {
+    padding-inline: 9px;
+    white-space: nowrap;
+  }
+  .web-badge,
+  #app-header .separator {
+    display: none;
+  }
+}
+
+@media (max-width: 380px) {
+  #view-switch button {
+    padding-inline: 6px;
+    font-size: 11px;
+  }
+  #app-header {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 340px) {
+  /* 320 px phones: let the tab strip scroll sideways. The app had no room at
+     this width before the fourth tab either. */
+  #view-switch {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+}
+
+@media (max-width: 480px) {
+  #finder {
+    --finder-card-w: 156px;
+  }
+  .finder-file-btn {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .finder-file-kind {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #finder *,
+  #finder *::before,
+  #finder *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}

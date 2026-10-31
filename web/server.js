@@ -35,6 +35,7 @@ const { loadTools } = require('../main/tools.js');
 const { loadCategories } = require('../main/categories.js');
 const { mergeState } = require('../main/composer.js');
 const { _internal: uploadInternals } = require('../main/uploads.js');
+const { createFinderFromEnv } = require('../main/finder/index.js');
 
 // scad-params.js is an ES module because the BROWSER bundle imports it too —
 // one parser, not a server copy and a client copy that drift. This server is
@@ -116,13 +117,18 @@ const CHECKPOINT_REGISTRY = 'clawscad.json';
 // preload, and node_modules; a "serve everything under APP_ROOT" handler would
 // publish all of it the first time somebody guessed a filename.
 
+// CLAWSCAD_WEB_DIST lets a test serve a bundle it built elsewhere, so a test run
+// never overwrites web/dist/app.js — the file a running server is serving live.
+const WEB_DIST = process.env.CLAWSCAD_WEB_DIST ? path.resolve(process.env.CLAWSCAD_WEB_DIST) : path.join(WEB_ROOT, 'dist');
+
 const STATIC = new Map([
   ['/', { file: path.join(WEB_ROOT, 'index.html'), type: 'text/html; charset=utf-8' }],
   ['/index.html', { file: path.join(WEB_ROOT, 'index.html'), type: 'text/html; charset=utf-8' }],
-  ['/dist/app.js', { file: path.join(WEB_ROOT, 'dist', 'app.js'), type: 'text/javascript; charset=utf-8' }],
-  ['/dist/app.js.map', { file: path.join(WEB_ROOT, 'dist', 'app.js.map'), type: 'application/json; charset=utf-8' }],
+  ['/dist/app.js', { file: path.join(WEB_DIST, 'app.js'), type: 'text/javascript; charset=utf-8' }],
+  ['/dist/app.js.map', { file: path.join(WEB_DIST, 'app.js.map'), type: 'application/json; charset=utf-8' }],
   ['/style.css', { file: path.join(APP_ROOT, 'style.css'), type: 'text/css; charset=utf-8' }],
   ['/style-studio.css', { file: path.join(APP_ROOT, 'style-studio.css'), type: 'text/css; charset=utf-8' }],
+  ['/style-finder.css', { file: path.join(APP_ROOT, 'style-finder.css'), type: 'text/css; charset=utf-8' }],
   ['/web.css', { file: path.join(WEB_ROOT, 'web.css'), type: 'text/css; charset=utf-8' }],
   ['/favicon.ico', { file: path.join(APP_ROOT, 'icon.png'), type: 'image/png' }],
 ]);
@@ -158,6 +164,40 @@ function containedInWorkspace(candidate) {
   const rel = path.relative(root, resolved);
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
   return resolved;
+}
+
+// ── Find & Print ──────────────────────────────────────────────────────────
+//
+// The same main/finder/ code the desktop app runs, minus the printer: `printing:
+// false` makes every print call answer "desktop-only" (a browser tab cannot reach
+// a printer on the LAN, and this server must not drive one on a remote user's
+// behalf). Downloads land in <workspace>/models/ and are NEVER served back: the
+// two file routes below refuse that folder. A mesh you open in ClawSCAD is copied
+// to meshes/ and served like any other workspace mesh, to the signed-in user only.
+
+const finder = createFinderFromEnv({ cacheDir: path.join(STATE_DIR, 'finder-cache'), printing: false });
+
+const MODELS_DIR = path.join(WORKSPACE, 'models');
+
+/** True when `resolved` (already realpath'd) is inside <workspace>/models. */
+function isInsideModels(resolved) {
+  let root = MODELS_DIR;
+  try {
+    root = fs.realpathSync(MODELS_DIR);
+  } catch {
+    /* no models folder yet */
+  }
+  const rel = path.relative(root, resolved);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/** A POST that changes state must be JSON: a cross-site form cannot send that without a preflight. */
+function requireJson(req, res) {
+  if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+    sendJson(res, 415, { ok: false, error: { code: 'bad-request', message: 'Send application/json.' } });
+    return false;
+  }
+  return true;
 }
 
 // ── composer / studio state ───────────────────────────────────────────────
@@ -1203,6 +1243,35 @@ async function route(req, res, url) {
     return sendJson(res, 200, { workspace: WORKSPACE, stateDir: STATE_DIR, version: PKG_VERSION });
   }
 
+  // ── Find & Print ────────────────────────────────────────────────────────
+  if (p.startsWith('/api/finder/')) {
+    const q = url.searchParams;
+    if (p === '/api/finder/capabilities' && method === 'GET') return sendJson(res, 200, finder.capabilities());
+    if (p === '/api/finder/search' && method === 'GET') {
+      const sites = (q.get('sites') || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const out = await finder.search({ query: q.get('q') || '', sites, page: Number(q.get('page') || 0), limit: Number(q.get('limit') || 24) });
+      return sendJson(res, out.ok ? 200 : 400, out);
+    }
+    if (p === '/api/finder/detail' && method === 'GET') {
+      const out = await finder.detail({ site: q.get('site') || '', id: q.get('id') || '' });
+      return sendJson(res, out.ok ? 200 : out.error.code === 'not-found' ? 404 : 502, out);
+    }
+    if ((p === '/api/finder/download' || p === '/api/finder/open') && method === 'POST') {
+      if (!requireJson(req, res)) return;
+      const body = (await readJsonBody(req).catch(() => ({}))) || {};
+      const out =
+        p === '/api/finder/download'
+          ? await finder.download({ workspaceDir: WORKSPACE, site: String(body.site || ''), id: String(body.id || ''), fileId: body.fileId })
+          : await finder.open({ workspaceDir: WORKSPACE, site: String(body.site || ''), id: String(body.id || ''), path: body.path });
+      return sendJson(res, out.ok ? 200 : 400, out);
+    }
+    // Everything that would touch a printer or a slicer.
+    if (p.startsWith('/api/finder/print')) {
+      return sendJson(res, 403, { ok: false, error: { code: 'desktop-only', message: 'Printing needs the desktop app: the web build cannot reach the printer on your network.' } });
+    }
+    return sendJson(res, 404, { error: 'not-found', path: p });
+  }
+
   // ── env:status ──────────────────────────────────────────────────────────
   if (p === '/api/env' && method === 'GET') {
     // Honest, server-side probes — and honest is the whole point, so this has
@@ -1296,6 +1365,7 @@ async function route(req, res, url) {
     const requested = url.searchParams.get('path') || '';
     const resolved = containedInWorkspace(requested);
     if (!resolved) return sendJson(res, 403, { error: 'outside the workspace' });
+    if (isInsideModels(resolved)) return sendJson(res, 403, { error: 'downloaded models are not served' });
     const ext = path.extname(resolved).toLowerCase();
     const kind = [...OPENSCAD_EXPORT.values()].find((v) => v.ext === ext);
     if (!kind) return sendJson(res, 415, { error: `not a downloadable artifact: ${ext}` });
@@ -1397,6 +1467,7 @@ async function route(req, res, url) {
   if (p === '/api/model/file' && (method === 'GET' || method === 'HEAD')) {
     const resolved = containedInWorkspace(url.searchParams.get('path') || '');
     if (!resolved) return sendJson(res, 403, { error: 'outside the workspace' });
+    if (isInsideModels(resolved)) return sendJson(res, 403, { error: 'downloaded models are not served' });
     const ext = path.extname(resolved).toLowerCase();
     if (!MESH_EXTS.includes(ext)) return sendJson(res, 415, { error: `not a mesh: ${ext}` });
     const st = statFile(resolved);
