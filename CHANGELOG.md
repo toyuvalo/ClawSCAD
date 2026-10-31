@@ -5,6 +5,48 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.8.0] - 2026-10-31
+
+### Added
+
+- **Find & Print.** A third tab next to Make and Workbench, in the desktop app
+  and the web build. One search box queries MakerWorld and Printables in
+  parallel and shows one list of cards (cover, title, author, likes,
+  downloads, licence, site badge). Site chips filter it. Thingiverse is a
+  stub that says it needs an API token.
+  - **Details.** Gallery, description (plain text), author, licence with a
+    plain-words summary, the file list, and a link back to the source page.
+  - **Download** (Printables): one STL or 3MF per click into
+    `<workspace>/models/printables-<id>/` with a `source.json` (url, author,
+    licence, fetched). Anonymous; no login. MakerWorld downloads need a Bambu
+    login this app does not have, so that button says so.
+  - **Open in ClawSCAD:** copies the mesh to `meshes/<slug>.stl` (a 3MF is
+    converted to STL) and writes a NEW mesh-derived checkpoint `.scad` at the
+    workspace root (kebab-case, at most 30 characters, first line names the
+    site, model id, author and licence, centred on X/Y with its base on Z=0,
+    wrapped in `color()`).
+  - **Print on P1S (desktop only):** slices with the Bambu Studio CLI using the
+    flat P1S presets and a port of the `run_bambu()` hang guard; shows the AMS
+    slots from `bambu_ctl.py status`; needs printer state IDLE or FINISH; shows
+    a fresh chamber snapshot and needs "the bed is clear" ticked before it
+    calls `bambu_ctl.py print`; follows progress by polling `status`. The web
+    build shows the button disabled with the reason.
+- **Politeness.** At most one request per second per site, a 15-minute search
+  cache and 1-hour detail cache (memory plus files under app userData), the
+  last good answer shown (marked old) when a site stops answering, and one
+  site failing never hides the other's results. Downloaded model files are
+  never served back by the web server (`/api/model/file` and
+  `/api/model/download` refuse `models/`).
+- **Offline mode for tests.** `CLAWSCAD_FINDER_FIXTURES=<dir>` answers both
+  sites from recorded responses and replaces the slicer and printer tools with
+  a fake that starts no process.
+
+### Changed
+
+- `web/build.js` accepts `--outdir <dir>` and `web/server.js` accepts
+  `CLAWSCAD_WEB_DIST`, so a test can build and serve a bundle without
+  overwriting the one a running server is serving.
+
 ## [0.7.6] - 2026-10-30
 
 ### Security

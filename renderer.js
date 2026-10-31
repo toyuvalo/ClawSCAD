@@ -3599,6 +3599,7 @@ import { mountOnboarding } from './renderer/onboarding.js';
 import { mountConfirmGate } from './renderer/confirm-gate.js';
 import { mountGuided } from './renderer/categories-ui.js';
 import { mountStudio } from './renderer/studio.js';
+import { mountFinder } from './renderer/finder.js';
 mountComposer(ctx); mountUploads(ctx); mountPresets(ctx); mountGallery(ctx); mountOnboarding(ctx);
 
 // ── v0.4 guided make (docs/v04-guided-make-contracts.md) ────────────────
@@ -3650,5 +3651,16 @@ window.api
     if (!ctx.studio && ctx.els.viewSwitch) {
       ctx.els.viewSwitch.hidden = true;
       document.body.dataset.view = 'workbench';
+    }
+    // ── v0.8 Find & Print ───────────────────────────────────────────────
+    // Its own try, after the studio, for the same reason as every mount above.
+    // It adds a third tab to the same switch, so it is skipped when the switch
+    // was just removed.
+    if (ctx.studio) {
+      try {
+        mountFinder(ctx);
+      } catch (err) {
+        console.error('[renderer] mountFinder threw', err);
+      }
     }
   });

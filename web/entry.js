@@ -22,6 +22,7 @@
 //     Studio draws for itself.
 import { ctx, notifyPipelineEvent, notifyCheckpointsChanged } from '../renderer/bus.js';
 import { mountStudio } from '../renderer/studio.js';
+import { mountFinder } from '../renderer/finder.js';
 import { createApiShim } from './api-shim.js';
 import { mountCustomize } from './customize.js';
 import { mountWorkbench } from './workbench.js';
@@ -411,6 +412,16 @@ api
       workbench = mountWorkbench(ctx, api, showToast);
     } catch (err) {
       console.error('[web] mountWorkbench threw', err);
+    }
+    // v0.8 Find & Print. Its own try, for the same reason as the two above. It
+    // builds its own tab and view root (web/index.html is not edited, so a
+    // server still running an older bundle never shows a dead tab), and it
+    // links the stylesheet this server serves at /style-finder.css.
+    try {
+      ctx.finderCssHref = '/style-finder.css';
+      mountFinder(ctx);
+    } catch (err) {
+      console.error('[web] mountFinder threw', err);
     }
     // studio.js restores a persisted view during its own mount, which happens
     // before the Workbench exists — so a reload that lands on the Workbench

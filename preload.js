@@ -145,6 +145,22 @@ contextBridge.exposeInMainWorld('api', {
   // tools is a supported state.
   toolsLoad: () => ipcRenderer.invoke('tools:load'),
 
+  // v0.8 Find & Print. Handlers land in main/model-finder.js. Every method
+  // takes plain JSON and resolves to { ok, ... } or { ok:false, error:{code,message} };
+  // none of them rejects for a site being down. finderOpenExternal opens only
+  // an allow-listed https page (the model's own page) in the user's browser.
+  finderCapabilities: () => ipcRenderer.invoke('finder:capabilities'),
+  finderSearch: (opts) => ipcRenderer.invoke('finder:search', opts),
+  finderDetail: (opts) => ipcRenderer.invoke('finder:detail', opts),
+  finderDownload: (opts) => ipcRenderer.invoke('finder:download', opts),
+  finderOpen: (opts) => ipcRenderer.invoke('finder:open', opts),
+  finderPrinterStatus: (opts) => ipcRenderer.invoke('finder:printer-status', opts),
+  finderPrinterSnapshot: () => ipcRenderer.invoke('finder:printer-snapshot'),
+  finderPrintPrepare: (opts) => ipcRenderer.invoke('finder:print-prepare', opts),
+  finderPrintStart: (opts) => ipcRenderer.invoke('finder:print-start', opts),
+  finderJob: (jobId) => ipcRenderer.invoke('finder:job', jobId),
+  finderOpenExternal: (url) => ipcRenderer.invoke('finder:open-external', url),
+
   // clawscad:anchor:preload:gallery — P4. Handlers land in main/gallery.js.
   galleryList: () => ipcRenderer.invoke('gallery:list'),
   galleryListJobs: () => ipcRenderer.invoke('gallery:list-jobs'),

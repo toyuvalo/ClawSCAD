@@ -1,0 +1,353 @@
+// main/finder/normalize.js — turns each site's JSON into ONE shape.
+//
+// The renderer, the cache and the tests only ever see the shapes below; nothing
+// outside the adapters knows what a MakerWorld `designCreator` or a Printables
+// `publicUsername` is. A field a site does not give is `null`, never `undefined`,
+// never the string "undefined".
+//
+//   search item   { id, site, siteId, title, author, authorUrl, cover, likes,
+//                   downloads, prints, licence, licenceName, url }
+//   detail        search item + { description, images[], tags[], category,
+//                   published, authorAvatar, licenceInfo, files[], plates[],
+//                   download:{available, reason?, message?} }
+//
+// `licence` is the short label ("CC BY-NC"); `licenceName` is the site's own
+// words. The spelling `licence` is deliberate and used everywhere in this app.
+'use strict';
+
+const SITES = {
+  makerworld: { id: 'makerworld', label: 'MakerWorld' },
+  printables: { id: 'printables', label: 'Printables' },
+  thingiverse: { id: 'thingiverse', label: 'Thingiverse' },
+};
+
+const PRINTABLE_EXTS = new Set(['stl', '3mf']);
+const MESH_EXTS = new Set(['stl', '3mf', 'obj']);
+
+const toInt = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Math.max(0, Math.trunc(Number(v))) : null);
+const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+// ── text ─────────────────────────────────────────────────────────────────
+
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '-', mdash: '-', hellip: '...', rsquo: "'", lsquo: "'", rdquo: '"', ldquo: '"' };
+
+/**
+ * Third-party HTML never reaches the renderer. This keeps the words, the
+ * paragraph breaks and the list bullets, and drops every tag and attribute.
+ */
+function htmlToText(html, max = 6000) {
+  if (typeof html !== 'string' || !html) return '';
+  let t = html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|blockquote|tr|ul|ol)>/gi, '\n\n')
+    .replace(/<li\b[^>]*>/gi, '\n- ')
+    .replace(/<[^>]+>/g, '');
+  t = t.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, g) => {
+    if (g[0] === '#') {
+      const code = g[1].toLowerCase() === 'x' ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : '';
+    }
+    return Object.prototype.hasOwnProperty.call(ENTITIES, g.toLowerCase()) ? ENTITIES[g.toLowerCase()] : m;
+  });
+  t = t
+    .replace(/\r/g, '')
+    .replace(/[ \t\u00a0]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return t.length > max ? t.slice(0, max).replace(/\s+\S*$/, '') + ' ...' : t;
+}
+
+// ── licence ──────────────────────────────────────────────────────────────
+
+/**
+ * @returns {{label:string|null, name:string|null, remix:'yes'|'no'|'unknown', commercial:'yes'|'no'|'unknown'}}
+ */
+function parseLicence(name, abbreviation) {
+  const raw = str(name) || str(abbreviation);
+  if (!raw) return { label: null, name: null, remix: 'unknown', commercial: 'unknown' };
+  const text = `${raw} ${str(abbreviation) || ''}`.toLowerCase();
+
+  if (/standard digital file/.test(text)) {
+    return { label: 'Standard Digital File License', name: raw, remix: 'no', commercial: 'no' };
+  }
+  if (/\bcc0\b|public domain|zero/.test(text)) {
+    return { label: 'CC0', name: raw, remix: 'yes', commercial: 'yes' };
+  }
+  const isCc = /creative commons|\bcc[- ]?(by|0)/.test(text);
+  if (isCc) {
+    const nc = /non-?commercial|\bnc\b|-nc\b/.test(text);
+    const nd = /no ?deriv|\bnd\b|-nd\b/.test(text);
+    const sa = /share ?alike|\bsa\b|-sa\b/.test(text);
+    const parts = ['BY'];
+    if (nc) parts.push('NC');
+    if (sa) parts.push('SA');
+    if (nd) parts.push('ND');
+    return { label: `CC ${parts.join('-')}`, name: raw, remix: nd ? 'no' : 'yes', commercial: nc ? 'no' : 'yes' };
+  }
+  if (/lgpl/.test(text)) return { label: 'LGPL', name: raw, remix: 'yes', commercial: 'yes' };
+  if (/gpl|gnu/.test(text)) return { label: 'GPL', name: raw, remix: 'yes', commercial: 'yes' };
+  if (/\bbsd\b/.test(text)) return { label: 'BSD', name: raw, remix: 'yes', commercial: 'yes' };
+  return { label: raw, name: raw, remix: 'unknown', commercial: 'unknown' };
+}
+
+// ── files ────────────────────────────────────────────────────────────────
+
+function extOf(name) {
+  const m = /\.([A-Za-z0-9]{1,8})$/.exec(String(name || ''));
+  return m ? m[1].toLowerCase() : '';
+}
+
+function fileKind(name) {
+  const ext = extOf(name);
+  if (ext === 'stp') return 'step';
+  return ext || 'file';
+}
+
+const NOT_PHASE1 = 'This app downloads STL and 3MF files only. Open the model page to get this file.';
+
+// ── Printables ───────────────────────────────────────────────────────────
+
+const PRINTABLES_MEDIA = 'https://media.printables.com/';
+const PRINTABLES_SITE = 'https://www.printables.com';
+
+const mediaUrl = (p) => (typeof p === 'string' && p && !p.includes('..') ? PRINTABLES_MEDIA + p.replace(/^\/+/, '') : null);
+
+function printablesModelUrl(id, slug) {
+  return `${PRINTABLES_SITE}/model/${encodeURIComponent(id)}${slug ? '-' + encodeURIComponent(slug) : ''}`;
+}
+
+function printablesUserUrl(name) {
+  return name ? `${PRINTABLES_SITE}/@${encodeURIComponent(name)}` : null;
+}
+
+function normalizePrintablesHit(hit) {
+  if (!hit || hit.id == null) return null;
+  const id = String(hit.id);
+  const lic = parseLicence(hit.license && hit.license.name, hit.license && hit.license.abbreviation);
+  const author = str(hit.user && hit.user.publicUsername);
+  const images = Array.isArray(hit.images) ? hit.images : [];
+  return {
+    id: `printables:${id}`,
+    site: 'printables',
+    siteId: id,
+    title: str(hit.name) || `Model ${id}`,
+    author,
+    authorUrl: printablesUserUrl(author),
+    cover: images.length ? mediaUrl(images[0].filePath) : null,
+    likes: toInt(hit.likesCount),
+    downloads: toInt(hit.downloadCount),
+    prints: null,
+    licence: lic.label,
+    licenceName: lic.name,
+    url: printablesModelUrl(id, str(hit.slug)),
+  };
+}
+
+function printablesFile(f, group) {
+  const name = str(f && f.name) || 'file';
+  const kind = fileKind(name);
+  const printable = PRINTABLE_EXTS.has(kind) && group === 'stls';
+  return {
+    id: String(f.id),
+    name,
+    size: toInt(f.fileSize),
+    kind,
+    group,
+    folder: str(f.folder),
+    note: str(f.note),
+    previewUrl: mediaUrl(f.filePreviewPath),
+    printable,
+    downloadable: printable,
+    reason: printable ? null : NOT_PHASE1,
+    reasonShort: printable ? null : 'STL and 3MF only',
+  };
+}
+
+function normalizePrintablesDetail(print) {
+  const base = normalizePrintablesHit(print);
+  if (!base) return null;
+  const lic = parseLicence(print.license && print.license.name, print.license && print.license.abbreviation);
+  const files = [];
+  for (const group of ['stls', 'gcodes', 'slas', 'otherFiles']) {
+    for (const f of Array.isArray(print[group]) ? print[group] : []) {
+      if (f && f.id != null) files.push(printablesFile(f, group));
+    }
+  }
+  const images = (Array.isArray(print.images) ? print.images : []).map((i) => mediaUrl(i && i.filePath)).filter(Boolean);
+  const licenceHtml = print.license && typeof print.license.content === 'string' ? print.license.content : '';
+  const licenceLink = /href="(https?:\/\/[^"]+)"/i.exec(licenceHtml);
+  return {
+    ...base,
+    description: htmlToText(print.description) || htmlToText(print.summary),
+    summary: str(print.summary),
+    images: images.length ? images : base.cover ? [base.cover] : [],
+    tags: (Array.isArray(print.tags) ? print.tags : []).map((t) => str(t && t.name)).filter(Boolean),
+    category: str(print.category && print.category.name),
+    published: str(print.datePublished),
+    authorAvatar: mediaUrl(print.user && print.user.avatarFilePath),
+    licenceInfo: {
+      remix: lic.remix,
+      commercial: lic.commercial,
+      url: licenceLink ? licenceLink[1] : null,
+      text: null,
+    },
+    files,
+    plates: [],
+    download: { available: true },
+  };
+}
+
+// ── MakerWorld ───────────────────────────────────────────────────────────
+
+const MAKERWORLD_SITE = 'https://makerworld.com';
+
+function makerworldModelUrl(id, slug) {
+  return `${MAKERWORLD_SITE}/en/models/${encodeURIComponent(id)}${slug ? '-' + encodeURIComponent(slug) : ''}`;
+}
+
+function makerworldUserUrl(creator) {
+  const handle = str(creator && creator.handle);
+  return handle ? `${MAKERWORLD_SITE}/en/@${encodeURIComponent(handle)}` : null;
+}
+
+const httpsUrl = (u) => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
+
+function normalizeMakerWorldHit(hit) {
+  if (!hit || hit.id == null) return null;
+  const id = String(hit.id);
+  const lic = parseLicence(hit.license);
+  const creator = hit.designCreator || null;
+  const pictures = hit.designExtension && Array.isArray(hit.designExtension.design_pictures) ? hit.designExtension.design_pictures : [];
+  return {
+    id: `makerworld:${id}`,
+    site: 'makerworld',
+    siteId: id,
+    title: str(hit.title) || `Model ${id}`,
+    author: str(creator && creator.name),
+    authorUrl: makerworldUserUrl(creator),
+    cover: httpsUrl(hit.cover) || httpsUrl(hit.coverLandscape) || httpsUrl(hit.coverUrl) || httpsUrl(pictures[0] && pictures[0].url),
+    likes: toInt(hit.likeCount),
+    downloads: toInt(hit.downloadCount),
+    prints: toInt(hit.printCount),
+    licence: lic.label,
+    licenceName: lic.name,
+    url: makerworldModelUrl(id, str(hit.slug)),
+  };
+}
+
+const NEEDS_BAMBU_LOGIN = 'MakerWorld downloads need a Bambu account login, which this app does not have yet.';
+
+function normalizeMakerWorldDetail(design) {
+  const base = normalizeMakerWorldHit({ ...design, cover: design && (design.coverUrl || design.cover) });
+  if (!base) return null;
+  const lic = parseLicence(design.license);
+  const ext = design.designExtension || {};
+  const imageList = [
+    httpsUrl(design.coverUrl),
+    ...(Array.isArray(ext.design_pictures) ? ext.design_pictures : []).map((p) => httpsUrl(p && p.url)),
+    ...(Array.isArray(ext.real_pictures) ? ext.real_pictures : []).map((p) => httpsUrl(p && p.url)),
+  ].filter(Boolean);
+  const images = [...new Set(imageList)].slice(0, 24);
+
+  const files = (Array.isArray(ext.model_files) ? ext.model_files : [])
+    .filter((f) => f && !f.isDir && (f.modelName || f.modelFileName))
+    .map((f, i) => ({
+      id: String(f.unikey || i),
+      name: str(f.modelName) || str(f.modelFileName) || `file-${i + 1}`,
+      size: toInt(f.modelSize),
+      kind: str(f.modelType) ? String(f.modelType).toLowerCase() : fileKind(f.modelName),
+      group: 'model_files',
+      folder: str(f.dirName),
+      note: str(f.note),
+      previewUrl: httpsUrl(f.thumbnailUrl),
+      printable: false,
+      downloadable: false,
+      reason: NEEDS_BAMBU_LOGIN,
+      reasonShort: 'Needs Bambu login',
+    }));
+
+  const plates = [];
+  for (const inst of Array.isArray(design.instances) ? design.instances : []) {
+    const info = (inst && inst.extention && inst.extention.modelInfo) || {};
+    const compat = info.compatibility || {};
+    for (const p of Array.isArray(info.plates) ? info.plates : []) {
+      plates.push({
+        profileId: inst.profileId != null ? String(inst.profileId) : null,
+        profileTitle: str(inst.title),
+        printer: str(compat.devProductName),
+        index: toInt(p.index),
+        thumbnail: httpsUrl(p.thumbnail && p.thumbnail.url),
+        seconds: toInt(p.prediction),
+        grams: Number.isFinite(Number(p.weight)) ? Number(p.weight) : null,
+        filaments: (Array.isArray(p.filaments) ? p.filaments : []).map((fil) => ({
+          type: str(fil.type),
+          color: /^#[0-9a-f]{6}/i.test(fil.color || '') ? String(fil.color).slice(0, 7) : null,
+          grams: Number.isFinite(Number(fil.usedG)) ? Number(fil.usedG) : null,
+        })),
+      });
+    }
+  }
+
+  const info = design.licenseDescriptionInfo || {};
+  return {
+    ...base,
+    cover: images[0] || base.cover,
+    description: htmlToText(design.summary),
+    summary: null,
+    images: images.length ? images : base.cover ? [base.cover] : [],
+    tags: (Array.isArray(design.tags) ? design.tags : []).map(str).filter(Boolean),
+    category: str(design.categories && design.categories[0] && design.categories[0].name),
+    published: str(design.createTime),
+    authorAvatar: httpsUrl(design.designCreator && design.designCreator.avatar),
+    licenceInfo: { remix: lic.remix, commercial: lic.commercial, url: null, text: str(info.content) },
+    files,
+    plates,
+    download: { available: false, reason: 'needs-login', message: NEEDS_BAMBU_LOGIN },
+  };
+}
+
+// ── merge ────────────────────────────────────────────────────────────────
+
+/**
+ * Round-robin across the sites so the first screen shows every site, in each
+ * site's own ranking order. Duplicate ids (a cached page repeated) are dropped.
+ */
+function interleave(lists) {
+  const out = [];
+  const seen = new Set();
+  const queues = lists.map((l) => (Array.isArray(l) ? l.slice() : []));
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const q of queues) {
+      while (q.length) {
+        const item = q.shift();
+        if (item && !seen.has(item.id)) {
+          seen.add(item.id);
+          out.push(item);
+          progressed = true;
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+module.exports = {
+  SITES,
+  PRINTABLE_EXTS,
+  MESH_EXTS,
+  htmlToText,
+  parseLicence,
+  fileKind,
+  extOf,
+  normalizePrintablesHit,
+  normalizePrintablesDetail,
+  normalizeMakerWorldHit,
+  normalizeMakerWorldDetail,
+  interleave,
+  printablesModelUrl,
+  makerworldModelUrl,
+};

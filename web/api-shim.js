@@ -87,6 +87,21 @@ export function createApiShim(opts = {}) {
     }
   }
 
+  const NO_ANSWER = {
+    ok: false,
+    error: { code: 'no-answer', message: 'The ClawSCAD server did not answer. Reload the page (your sign-in may have expired) and try again.' },
+  };
+  const DESKTOP_ONLY = {
+    ok: false,
+    error: { code: 'desktop-only', message: 'Printing needs the desktop app: the web build cannot reach the printer on your network.' },
+  };
+  const finderJson = async (path, init) => {
+    const res = await json(path, init);
+    return res && typeof res === 'object' && 'ok' in res ? res : NO_ANSWER;
+  };
+  const finderPost = (path, body) =>
+    finderJson(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
   const api = {
     // ── tools / categories ────────────────────────────────────────────────
     toolsLoad: () => json('/api/tools'),
@@ -352,6 +367,30 @@ export function createApiShim(opts = {}) {
       onUnsupported('The setup guide is in the repository README on the machine hosting this server.');
       return false;
     },
+
+    // ── Find & Print (v0.8) ───────────────────────────────────────────────
+    //
+    // Same shapes as preload.js's finder* methods: { ok, ... } or
+    // { ok:false, error:{ code, message } }, never a rejection. The browser build
+    // searches, shows details, downloads one file to the server's workspace and
+    // opens it as a checkpoint. It cannot print: a tab has no route to the
+    // printer, so those calls answer desktop-only without asking the server.
+    // finderOpenExternal is left undefined on purpose: renderer/finder.js then
+    // lets a plain <a target=_blank> do its job.
+    finderCapabilities: () => finderJson('/api/finder/capabilities'),
+    finderSearch: (o = {}) => {
+      const q = new URLSearchParams({ q: String(o.query || ''), page: String(o.page || 0), limit: String(o.limit || 24) });
+      if (Array.isArray(o.sites) && o.sites.length) q.set('sites', o.sites.join(','));
+      return finderJson(`/api/finder/search?${q}`);
+    },
+    finderDetail: (o = {}) => finderJson(`/api/finder/detail?${new URLSearchParams({ site: String(o.site || ''), id: String(o.id || '') })}`),
+    finderDownload: (o = {}) => finderPost('/api/finder/download', { site: o.site, id: o.id, fileId: o.fileId }),
+    finderOpen: (o = {}) => finderPost('/api/finder/open', { site: o.site, id: o.id, path: o.path }),
+    finderPrinterStatus: async () => DESKTOP_ONLY,
+    finderPrinterSnapshot: async () => DESKTOP_ONLY,
+    finderPrintPrepare: async () => DESKTOP_ONLY,
+    finderPrintStart: async () => DESKTOP_ONLY,
+    finderJob: async () => DESKTOP_ONLY,
 
     onMakeEvent: (cb) => {
       if (typeof cb === 'function') makeSubs.push(cb);
