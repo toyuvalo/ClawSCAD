@@ -1,6 +1,7 @@
-// renderer/finder.js — v0.8 "Find & Print". One search box over MakerWorld and
-// Printables, a model page, and three actions: open it in ClawSCAD, print it on
-// the P1S, or go to the source page.
+// renderer/finder.js — v0.8 "Find & Print". One search box over Printables, a
+// model page, and three actions: open it in ClawSCAD, print it on the P1S, or go
+// to the source page. Thingiverse, MyMiniFactory and Cults3D are listed as chips
+// that say "needs API key"; adding a source is an adapter in main/finder/.
 //
 // This one file runs in BOTH builds. The desktop app mounts it from renderer.js
 // over window.api (preload.js -> main/model-finder.js); the web build mounts it
@@ -16,11 +17,12 @@
 //    then start. The main process re-checks all of it; this is the front half.
 //  - mountFinder never throws: a throw here would leave a tab that does nothing.
 
-const SITE_LABEL = { makerworld: 'MakerWorld', printables: 'Printables', thingiverse: 'Thingiverse' };
+const SITE_LABEL = { printables: 'Printables', thingiverse: 'Thingiverse', myminifactory: 'MyMiniFactory', cults3d: 'Cults3D' };
 const FALLBACK_SITES = [
-  { id: 'makerworld', label: 'MakerWorld', available: true },
   { id: 'printables', label: 'Printables', available: true },
-  { id: 'thingiverse', label: 'Thingiverse', available: false, reason: 'needs-token' },
+  { id: 'thingiverse', label: 'Thingiverse', available: false, reason: 'needs-key' },
+  { id: 'myminifactory', label: 'MyMiniFactory', available: false, reason: 'needs-key' },
+  { id: 'cults3d', label: 'Cults3D', available: false, reason: 'needs-key' },
 ];
 const EXAMPLES = ['gridfinity', 'cable clip', 'phone stand', 'benchy'];
 const STORE_KEY = 'clawscad.finder.v1';
@@ -110,7 +112,7 @@ function mount(ctx) {
   // ── state ────────────────────────────────────────────────────────────
   const saved = loadSaved();
   let sites = FALLBACK_SITES.slice();
-  let selected = new Set(saved.sites.length ? saved.sites : ['makerworld', 'printables']);
+  let selected = new Set(saved.sites.length ? saved.sites : ['printables']);
   let query = saved.query;
   let results = { query: '', page: 0, items: [], siteStatus: {}, loading: false, error: null, hasSearched: false };
   let searchSeq = 0;
@@ -187,7 +189,7 @@ function mount(ctx) {
     id: 'finder-query',
     class: 'finder-input',
     type: 'search',
-    placeholder: 'Search MakerWorld and Printables',
+    placeholder: 'Search Printables',
     'aria-label': 'Search for a model',
     autocomplete: 'off',
     enterkeyhint: 'search',
@@ -263,12 +265,15 @@ function mount(ctx) {
     const allOn = usable.every((id) => selected.has(id));
     const mk = (label, on, onClick, extra) =>
       h('button', { type: 'button', class: 'finder-chip' + (on ? ' is-on' : ''), 'aria-pressed': on ? 'true' : 'false', onClick, ...extra }, label);
-    chipsEl.appendChild(
-      mk('All sites', allOn, () => {
-        selected = new Set(usable);
-        chipsChanged();
-      }, { 'data-site': 'all' })
-    );
+    // "All sites" only means something once there are two live sources.
+    if (usable.length > 1) {
+      chipsEl.appendChild(
+        mk('All sites', allOn, () => {
+          selected = new Set(usable);
+          chipsChanged();
+        }, { 'data-site': 'all' })
+      );
+    }
     for (const s of sites) {
       if (s.available === false) {
         chipsEl.appendChild(
@@ -292,10 +297,10 @@ function mount(ctx) {
     }
   }
   function reasonShort(reason) {
-    return reason === 'needs-token' ? 'needs token' : 'unavailable';
+    return reason === 'needs-key' ? 'needs API key' : 'unavailable';
   }
   function reasonText(reason, label) {
-    return reason === 'needs-token' ? `${label} needs an API token that this app does not have yet.` : `${label} is not available.`;
+    return reason === 'needs-key' ? `${label} needs an API key, which this app does not have yet.` : `${label} is not available.`;
   }
   function chipsChanged() {
     persist();
@@ -421,7 +426,7 @@ function mount(ctx) {
     introEl.textContent = '';
     introEl.append(
       h('h1', { class: 'finder-intro-title', text: 'Find a model to print' }),
-      h('p', { class: 'finder-intro-sub', text: 'Search MakerWorld and Printables from one box. Open any model in ClawSCAD to change it, or print it on your P1S.' }),
+      h('p', { class: 'finder-intro-sub', text: 'Search Printables from one box. Open any model in ClawSCAD to change it, or print it on your P1S.' }),
       h(
         'div',
         { class: 'finder-examples', role: 'group', 'aria-label': 'Example searches' },
@@ -600,8 +605,7 @@ function mount(ctx) {
       h(
         'div',
         { class: 'finder-stats' },
-        stats(src),
-        Number.isFinite(src.prints) && src.prints > 0 ? h('span', { class: 'finder-stat', title: `${whole.format(src.prints)} prints` }, icon('printer'), compact.format(src.prints)) : null
+        stats(src)
       ),
       licenceBlock(src, data)
     );
@@ -622,7 +626,6 @@ function mount(ctx) {
       if (detail.stale) detailEl.appendChild(note('warn', `${SITE_LABEL[item.site]} is not answering, so this page comes from the saved copy.`));
       if (print.open) detailEl.appendChild(printPanel());
       detailEl.appendChild(filesBlock(data));
-      if (data.plates && data.plates.length) detailEl.appendChild(platesBlock(data));
       detailEl.appendChild(aboutBlock(data));
     }
     const lastCard = gridEl.querySelector(`.finder-card[data-id="${cssEsc(item.id)}"]`);
@@ -739,24 +742,6 @@ function mount(ctx) {
       list.appendChild(row);
     }
     sec.appendChild(list);
-    return sec;
-  }
-
-  function platesBlock(data) {
-    const sec = h('section', { class: 'finder-section', id: 'finder-plates' }, h('h3', { class: 'finder-h3', text: 'Print profiles from the author' }), h('p', { class: 'finder-dim', text: 'For reference. The files need a Bambu login to download.' }));
-    const grid = h('div', { class: 'finder-plategrid' });
-    for (const p of data.plates.slice(0, 12)) {
-      const t = fmtSeconds(p.seconds);
-      grid.appendChild(
-        h(
-          'div',
-          { class: 'finder-plate' },
-          p.thumbnail ? h('img', { src: p.thumbnail, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : h('div', { class: 'finder-plate-blank' }),
-          h('div', { class: 'finder-plate-text' }, h('strong', { text: `Plate ${p.index || ''}`.trim() }), h('span', { text: [p.printer, t, p.grams != null ? `${p.grams} g` : null].filter(Boolean).join(' · ') }), h('span', { class: 'finder-dim', text: (p.filaments || []).map((f) => f.type).filter(Boolean).join(' + ') }))
-        )
-      );
-    }
-    sec.appendChild(grid);
     return sec;
   }
 

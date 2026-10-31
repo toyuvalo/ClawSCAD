@@ -1,24 +1,26 @@
 // main/finder/normalize.js — turns each site's JSON into ONE shape.
 //
 // The renderer, the cache and the tests only ever see the shapes below; nothing
-// outside the adapters knows what a MakerWorld `designCreator` or a Printables
-// `publicUsername` is. A field a site does not give is `null`, never `undefined`,
+// outside the adapters knows what a Printables `publicUsername` is. A field a site does not give is `null`, never `undefined`,
 // never the string "undefined".
 //
 //   search item   { id, site, siteId, title, author, authorUrl, cover, likes,
-//                   downloads, prints, licence, licenceName, url }
+//                   downloads, licence, licenceName, url }
 //   detail        search item + { description, images[], tags[], category,
-//                   published, authorAvatar, licenceInfo, files[], plates[],
+//                   published, authorAvatar, licenceInfo, files[],
 //                   download:{available, reason?, message?} }
 //
 // `licence` is the short label ("CC BY-NC"); `licenceName` is the site's own
 // words. The spelling `licence` is deliberate and used everywhere in this app.
 'use strict';
 
+// Printables is the only live source. The other three are stubs that say they
+// need an API key (main/finder/adapters/key-stubs.js).
 const SITES = {
-  makerworld: { id: 'makerworld', label: 'MakerWorld' },
   printables: { id: 'printables', label: 'Printables' },
   thingiverse: { id: 'thingiverse', label: 'Thingiverse' },
+  myminifactory: { id: 'myminifactory', label: 'MyMiniFactory' },
+  cults3d: { id: 'cults3d', label: 'Cults3D' },
 };
 
 const PRINTABLE_EXTS = new Set(['stl', '3mf']);
@@ -137,7 +139,6 @@ function normalizePrintablesHit(hit) {
     cover: images.length ? mediaUrl(images[0].filePath) : null,
     likes: toInt(hit.likesCount),
     downloads: toInt(hit.downloadCount),
-    prints: null,
     licence: lic.label,
     licenceName: lic.name,
     url: printablesModelUrl(id, str(hit.slug)),
@@ -193,117 +194,7 @@ function normalizePrintablesDetail(print) {
       text: null,
     },
     files,
-    plates: [],
     download: { available: true },
-  };
-}
-
-// ── MakerWorld ───────────────────────────────────────────────────────────
-
-const MAKERWORLD_SITE = 'https://makerworld.com';
-
-function makerworldModelUrl(id, slug) {
-  return `${MAKERWORLD_SITE}/en/models/${encodeURIComponent(id)}${slug ? '-' + encodeURIComponent(slug) : ''}`;
-}
-
-function makerworldUserUrl(creator) {
-  const handle = str(creator && creator.handle);
-  return handle ? `${MAKERWORLD_SITE}/en/@${encodeURIComponent(handle)}` : null;
-}
-
-const httpsUrl = (u) => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
-
-function normalizeMakerWorldHit(hit) {
-  if (!hit || hit.id == null) return null;
-  const id = String(hit.id);
-  const lic = parseLicence(hit.license);
-  const creator = hit.designCreator || null;
-  const pictures = hit.designExtension && Array.isArray(hit.designExtension.design_pictures) ? hit.designExtension.design_pictures : [];
-  return {
-    id: `makerworld:${id}`,
-    site: 'makerworld',
-    siteId: id,
-    title: str(hit.title) || `Model ${id}`,
-    author: str(creator && creator.name),
-    authorUrl: makerworldUserUrl(creator),
-    cover: httpsUrl(hit.cover) || httpsUrl(hit.coverLandscape) || httpsUrl(hit.coverUrl) || httpsUrl(pictures[0] && pictures[0].url),
-    likes: toInt(hit.likeCount),
-    downloads: toInt(hit.downloadCount),
-    prints: toInt(hit.printCount),
-    licence: lic.label,
-    licenceName: lic.name,
-    url: makerworldModelUrl(id, str(hit.slug)),
-  };
-}
-
-const NEEDS_BAMBU_LOGIN = 'MakerWorld downloads need a Bambu account login, which this app does not have yet.';
-
-function normalizeMakerWorldDetail(design) {
-  const base = normalizeMakerWorldHit({ ...design, cover: design && (design.coverUrl || design.cover) });
-  if (!base) return null;
-  const lic = parseLicence(design.license);
-  const ext = design.designExtension || {};
-  const imageList = [
-    httpsUrl(design.coverUrl),
-    ...(Array.isArray(ext.design_pictures) ? ext.design_pictures : []).map((p) => httpsUrl(p && p.url)),
-    ...(Array.isArray(ext.real_pictures) ? ext.real_pictures : []).map((p) => httpsUrl(p && p.url)),
-  ].filter(Boolean);
-  const images = [...new Set(imageList)].slice(0, 24);
-
-  const files = (Array.isArray(ext.model_files) ? ext.model_files : [])
-    .filter((f) => f && !f.isDir && (f.modelName || f.modelFileName))
-    .map((f, i) => ({
-      id: String(f.unikey || i),
-      name: str(f.modelName) || str(f.modelFileName) || `file-${i + 1}`,
-      size: toInt(f.modelSize),
-      kind: str(f.modelType) ? String(f.modelType).toLowerCase() : fileKind(f.modelName),
-      group: 'model_files',
-      folder: str(f.dirName),
-      note: str(f.note),
-      previewUrl: httpsUrl(f.thumbnailUrl),
-      printable: false,
-      downloadable: false,
-      reason: NEEDS_BAMBU_LOGIN,
-      reasonShort: 'Needs Bambu login',
-    }));
-
-  const plates = [];
-  for (const inst of Array.isArray(design.instances) ? design.instances : []) {
-    const info = (inst && inst.extention && inst.extention.modelInfo) || {};
-    const compat = info.compatibility || {};
-    for (const p of Array.isArray(info.plates) ? info.plates : []) {
-      plates.push({
-        profileId: inst.profileId != null ? String(inst.profileId) : null,
-        profileTitle: str(inst.title),
-        printer: str(compat.devProductName),
-        index: toInt(p.index),
-        thumbnail: httpsUrl(p.thumbnail && p.thumbnail.url),
-        seconds: toInt(p.prediction),
-        grams: Number.isFinite(Number(p.weight)) ? Number(p.weight) : null,
-        filaments: (Array.isArray(p.filaments) ? p.filaments : []).map((fil) => ({
-          type: str(fil.type),
-          color: /^#[0-9a-f]{6}/i.test(fil.color || '') ? String(fil.color).slice(0, 7) : null,
-          grams: Number.isFinite(Number(fil.usedG)) ? Number(fil.usedG) : null,
-        })),
-      });
-    }
-  }
-
-  const info = design.licenseDescriptionInfo || {};
-  return {
-    ...base,
-    cover: images[0] || base.cover,
-    description: htmlToText(design.summary),
-    summary: null,
-    images: images.length ? images : base.cover ? [base.cover] : [],
-    tags: (Array.isArray(design.tags) ? design.tags : []).map(str).filter(Boolean),
-    category: str(design.categories && design.categories[0] && design.categories[0].name),
-    published: str(design.createTime),
-    authorAvatar: httpsUrl(design.designCreator && design.designCreator.avatar),
-    licenceInfo: { remix: lic.remix, commercial: lic.commercial, url: null, text: str(info.content) },
-    files,
-    plates,
-    download: { available: false, reason: 'needs-login', message: NEEDS_BAMBU_LOGIN },
   };
 }
 
@@ -345,9 +236,6 @@ module.exports = {
   extOf,
   normalizePrintablesHit,
   normalizePrintablesDetail,
-  normalizeMakerWorldHit,
-  normalizeMakerWorldDetail,
   interleave,
   printablesModelUrl,
-  makerworldModelUrl,
 };

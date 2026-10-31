@@ -20,9 +20,8 @@ const { createRateLimiter } = require('./rate-limiter.js');
 const { createCache } = require('./cache.js');
 const { createHttp } = require('./http.js');
 const { interleave, SITES } = require('./normalize.js');
-const { createMakerWorldAdapter } = require('./adapters/makerworld.js');
 const { createPrintablesAdapter, USER_AGENT: PRINTABLES_UA } = require('./adapters/printables.js');
-const { createThingiverseAdapter } = require('./adapters/thingiverse.js');
+const { createThingiverseAdapter, createMyMiniFactoryAdapter, createCults3dAdapter } = require('./adapters/key-stubs.js');
 const { downloadModelFile } = require('./download.js');
 const { openInClawscad } = require('./checkpoint.js');
 const { createRunner } = require('./runner.js');
@@ -31,7 +30,7 @@ const { createPrinter } = require('./printer.js');
 
 const SEARCH_TTL_MS = 15 * 60 * 1000;
 const DETAIL_TTL_MS = 60 * 60 * 1000;
-const DEFAULT_SITES = ['makerworld', 'printables'];
+const DEFAULT_SITES = ['printables'];
 const MAX_QUERY = 200;
 const MAX_JOBS = 30;
 
@@ -61,9 +60,10 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
   const cache = createCache({ dir: cacheDir, now });
   const http = createHttp({ fetchImpl, limiter });
   const adapters = {
-    makerworld: createMakerWorldAdapter({ http }),
     printables: createPrintablesAdapter({ http }),
     thingiverse: createThingiverseAdapter({ env }),
+    myminifactory: createMyMiniFactoryAdapter({ env }),
+    cults3d: createCults3dAdapter({ env }),
   };
 
   // Tool locations: constants in slicer.js / printer.js, overridable per machine.
@@ -123,7 +123,7 @@ function createFinder({ cacheDir, fetchImpl, runner, printing = false, env = pro
       return { items: out.items, status: { status: 'ok', count: out.items.length, total: out.total, cached: false, stale: false, ageMs: 0 } };
     } catch (err) {
       const e = asFinderError(err);
-      if (e.code === 'needs-token' || e.code === 'needs-login') {
+      if (e.code === 'needs-key' || e.code === 'needs-login') {
         return { items: [], status: { status: 'unavailable', count: 0, total: null, error: e.toJSON() } };
       }
       const old = cache.get(key, { allowStale: true });

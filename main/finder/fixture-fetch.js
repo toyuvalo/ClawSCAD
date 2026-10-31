@@ -1,4 +1,4 @@
-// main/finder/fixture-fetch.js — an offline stand-in for the two sites.
+// main/finder/fixture-fetch.js — an offline stand-in for Printables.
 //
 // Switched on ONLY by CLAWSCAD_FINDER_FIXTURES=<dir> (see index.js). It answers
 // the exact URLs the adapters use from the recorded responses in
@@ -6,9 +6,11 @@
 // without the network, without hitting anybody's server, and give the same
 // answer every time. Special search words steer the failure paths:
 //
-//   "zzempty"  -> no results on that site
-//   "fail-mw"  -> MakerWorld answers 500
+//   "zzempty"  -> no results
 //   "fail-pr"  -> Printables answers 403 (the Cloudflare case)
+//
+// Any other host gets a 404 and is recorded in `calls`, so a test can assert that
+// nothing else was ever contacted.
 //
 // File 9990001 is a synthetic 20 mm cube STL (684 bytes) so a download can be
 // verified end to end; every other file id gets a tiny 3MF that will, by design,
@@ -66,20 +68,6 @@ function createFixtureFetch(dir, { calls } = {}) {
     const u = new URL(url);
     const method = String(init.method || 'GET').toUpperCase();
     if (calls) calls.push({ method, url: String(url) });
-
-    if (u.hostname === 'api.bambulab.com') {
-      if (u.pathname.endsWith('/select/design2')) {
-        const kw = (u.searchParams.get('keyword') || '').toLowerCase();
-        if (kw.includes('fail-mw')) return json({ error: 'fixture failure' }, 500);
-        if (kw.includes('zzempty')) return json(read('makerworld-search-empty.json'));
-        const body = read('makerworld-search.json');
-        const offset = Number(u.searchParams.get('offset') || 0);
-        if (offset >= 3) return json({ ...body, hits: [] });
-        return json(body);
-      }
-      const m = /\/design-service\/design\/(\d+)$/.exec(u.pathname);
-      if (m) return m[1] === '404' ? json({}, 404) : json(read('makerworld-design.json'));
-    }
 
     if (u.hostname === 'api.printables.com' && method === 'POST') {
       const payload = JSON.parse(String(init.body || '{}'));
