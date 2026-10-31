@@ -127,34 +127,34 @@ test.describe.serial('Find & Print, desktop', () => {
     await expect(tab).toHaveAttribute('aria-selected', 'false');
   });
 
-  test('one search shows both sites, interleaved, with site badges and chips filter', async () => {
+  test('a search shows Printables cards, and the other sources are chips that say they need an API key', async () => {
     await openFinder(page);
     await search(page, 'gridfinity');
     const cards = page.locator('.finder-card:not(.is-skeleton)');
-    await expect(cards).toHaveCount(6);
-    const sites = await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-site')));
-    expect(sites).toEqual(['makerworld', 'printables', 'makerworld', 'printables', 'makerworld', 'printables']);
-    await expect(cards.first().locator('.finder-badge')).toHaveText('MakerWorld');
-    await expect(cards.nth(1).locator('.finder-card-author')).toHaveText('by Pred');
-    await expect(cards.nth(1).locator('.finder-licence')).toHaveText('CC BY-NC');
-    await expect(page.locator('#finder-status')).toContainText('6 shown for "gridfinity"');
-
-    // Thingiverse is a stub: visible, disabled, and says why.
-    const thingi = page.locator('.finder-chip[data-site="thingiverse"]');
-    await expect(thingi).toBeDisabled();
-    await expect(thingi).toContainText('needs token');
-
-    await page.locator('.finder-chip[data-site="makerworld"]').click(); // turn MakerWorld off
     await expect(cards).toHaveCount(3);
     expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-site')))).toEqual(['printables', 'printables', 'printables']);
-    // the last site cannot be switched off
+    await expect(cards.first().locator('.finder-badge')).toHaveText('Printables');
+    await expect(cards.first().locator('.finder-card-author')).toHaveText('by Pred');
+    await expect(cards.first().locator('.finder-licence')).toHaveText('CC BY-NC');
+    await expect(page.locator('#finder-status')).toContainText('3 shown for "gridfinity"');
+
+    // Thingiverse, MyMiniFactory and Cults3D are stubs: visible, disabled, and they say why.
+    for (const [id, label] of [['thingiverse', 'Thingiverse'], ['myminifactory', 'MyMiniFactory'], ['cults3d', 'Cults3D']]) {
+      const chip = page.locator(`.finder-chip[data-site="${id}"]`);
+      await expect(chip).toBeDisabled();
+      await expect(chip).toContainText(label);
+      await expect(chip).toContainText('needs API key');
+    }
+    // Printables is the only live source, so there is no "All sites" chip and it cannot be switched off.
+    await expect(page.locator('.finder-chip[data-site="all"]')).toHaveCount(0);
     await page.locator('.finder-chip[data-site="printables"]').click();
     await expect(page.locator('.finder-chip[data-site="printables"]')).toHaveAttribute('aria-pressed', 'true');
-    await page.locator('.finder-chip[data-site="all"]').click();
-    await expect(cards).toHaveCount(6);
+    await expect(cards).toHaveCount(3);
+    // MakerWorld is not offered anywhere in the page
+    expect((await page.locator('#finder').innerText()).toLowerCase()).not.toContain('makerworld');
   });
 
-  test('Show more asks for the next page and goes away when both sites are out of results', async () => {
+  test('Show more asks for the next page and goes away when Printables is out of results', async () => {
     await openFinder(page);
     await search(page, 'gridfinity');
     const more = page.locator('#finder-more-btn');
@@ -162,20 +162,20 @@ test.describe.serial('Find & Print, desktop', () => {
     await more.click();
     await expect(more).toBeHidden();
     // nothing was lost, and nothing was added twice
-    await expect(page.locator('.finder-card:not(.is-skeleton)')).toHaveCount(6);
+    await expect(page.locator('.finder-card:not(.is-skeleton)')).toHaveCount(3);
     expect(await page.evaluate(() => window.clawscadFinder.state().results.page)).toBe(1);
   });
 
-  test('one site failing does not hide the other site', async () => {
+  test('Printables refusing the request is reported with a retry button, not a blank page', async () => {
     await openFinder(page);
-    await search(page, 'fail-pr gridfinity');
-    const cards = page.locator('.finder-card:not(.is-skeleton)');
-    await expect(cards).toHaveCount(3);
-    expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-site')))).toEqual(['makerworld', 'makerworld', 'makerworld']);
+    await search(page, 'gridfinity'); // a good state first
+    await page.locator('#finder-query').fill('fail-pr gridfinity');
+    await page.locator('#finder-go').click();
     const note = page.locator('.finder-note.is-error');
     await expect(note).toContainText('Printables did not answer');
     await expect(note).toContainText('403');
     await expect(note.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.locator('#finder-empty')).toContainText('No results to show');
   });
 
   test('a search with no hits says what was searched', async () => {
@@ -205,21 +205,6 @@ test.describe.serial('Find & Print, desktop', () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('#finder-detail')).toBeHidden();
     await expect(page.locator('.finder-card').first()).toBeVisible();
-  });
-
-  test('a MakerWorld model page says it needs a Bambu login and offers the source link', async () => {
-    await openFinder(page);
-    await search(page, 'gridfinity');
-    await page.locator('.finder-card[data-id="makerworld:1685835"]').click();
-    await expect(page.locator('#finder-title')).toContainText('Lightest Gridfinity Base Ever');
-    await expect(page.locator('#finder-print-btn')).toBeDisabled();
-    await expect(page.locator('#finder-open-btn')).toBeDisabled();
-    await expect(page.locator('#finder-print-why')).toContainText('Needs Bambu login');
-    await expect(page.locator('#finder-licence .finder-licence')).toHaveText('Standard Digital File License');
-    await expect(page.locator('#finder-actions a', { hasText: 'Open on MakerWorld' })).toHaveAttribute('href', /makerworld\.com\/en\/models\/1685835/);
-    await expect(page.locator('#finder-plates')).toBeVisible();
-    await expect(page.locator('.finder-file.is-locked').first()).toContainText('Needs Bambu login');
-    await page.locator('#finder-back').click();
   });
 
   test('Open in ClawSCAD downloads one file and writes a new mesh checkpoint', async () => {

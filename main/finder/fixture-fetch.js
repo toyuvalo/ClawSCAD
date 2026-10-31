@@ -67,7 +67,7 @@ function createFixtureFetch(dir, { calls } = {}) {
   return async function fixtureFetch(url, init = {}) {
     const u = new URL(url);
     const method = String(init.method || 'GET').toUpperCase();
-    if (calls) calls.push({ method, url: String(url) });
+    if (calls) calls.push({ method, url: String(url), body: init.body == null ? null : String(init.body) });
 
     if (u.hostname === 'api.printables.com' && method === 'POST') {
       const payload = JSON.parse(String(init.body || '{}'));

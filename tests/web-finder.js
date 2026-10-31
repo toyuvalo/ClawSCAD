@@ -156,29 +156,32 @@ const postJson = async (base, route, body, headers = {}) => {
     srv = await startServer();
 
     // 1. GET /api/finder/capabilities
-    await check('GET /api/finder/capabilities returns print unavailable and thingiverse unavailable', async () => {
+    await check('GET /api/finder/capabilities returns print unavailable, Printables live and three stubs that need an API key', async () => {
       const { status, body } = await getJson(srv.base, '/api/finder/capabilities');
       assert.strictEqual(status, 200);
       assert.strictEqual(body.ok, true);
       assert.strictEqual(body.print.available, false);
       assert.ok(body.print.reason);
 
-      const tv = body.sites.find((s) => s.id === 'thingiverse');
-      assert.ok(tv, 'sites list must include thingiverse');
-      assert.strictEqual(tv.available, false);
-      assert.strictEqual(tv.reason, 'needs-token');
+      assert.deepStrictEqual(body.sites.map((s) => s.id), ['printables', 'thingiverse', 'myminifactory', 'cults3d']);
+      assert.strictEqual(body.sites.find((s) => s.id === 'printables').available, true);
+      for (const id of ['thingiverse', 'myminifactory', 'cults3d']) {
+        const s = body.sites.find((x) => x.id === id);
+        assert.strictEqual(s.available, false, id);
+        assert.strictEqual(s.reason, 'needs-key', id);
+      }
+      assert.ok(!JSON.stringify(body).toLowerCase().includes('makerworld'), 'MakerWorld must not appear anywhere');
     });
 
     // 2. GET /api/finder/search?q=gridfinity
-    await check('GET /api/finder/search?q=gridfinity returns items from both sites', async () => {
+    await check('GET /api/finder/search?q=gridfinity returns Printables items only', async () => {
       const { status, body } = await getJson(srv.base, '/api/finder/search?q=gridfinity');
       assert.strictEqual(status, 200);
       assert.strictEqual(body.ok, true);
       assert.ok(body.items.length > 0);
 
-      const sites = new Set(body.items.map((i) => i.site));
-      assert.ok(sites.has('printables'), 'must include printables items');
-      assert.ok(sites.has('makerworld'), 'must include makerworld items');
+      assert.ok(body.items.every((i) => i.site === 'printables'), 'only printables items');
+      assert.deepStrictEqual(Object.keys(body.sites), ['printables']);
     });
 
     // 3. GET /api/finder/search?q= (empty query)

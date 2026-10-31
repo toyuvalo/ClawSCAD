@@ -661,27 +661,11 @@ function mount(ctx) {
     const data = d.data;
     const file = selectedFile();
     const wrap = h('div', { class: 'finder-actions', id: 'finder-actions' });
-    const isMw = d.item.site === 'makerworld';
-    const dlReason =
-      data && data.download && !data.download.available
-        ? data.download.reason === 'needs-login'
-          ? 'Needs Bambu login. MakerWorld gives files only to a signed-in Bambu account, and this app has no login yet. Use "Open on MakerWorld".'
-          : data.download.message
-        : null;
-
     // Open in ClawSCAD
-    const openReason = !data ? 'Loading the file list...' : isMw ? dlReason : !file ? 'Pick an STL or 3MF file below.' : null;
+    const openReason = !data ? 'Loading the file list...' : !file ? 'Pick an STL or 3MF file below.' : null;
     const openBtn = h('button', { type: 'button', class: 'finder-btn finder-btn-secondary', id: 'finder-open-btn', disabled: Boolean(openReason || d.busy), onClick: openInClawscad }, icon('cube'), h('span', { text: d.busy === 'open' ? 'Opening...' : 'Open in ClawSCAD' }));
     // Print
-    const printReason = !data
-      ? 'Loading the file list...'
-      : isMw
-        ? dlReason
-        : !caps.print.available
-          ? caps.print.reason
-          : !file
-            ? 'Pick an STL or 3MF file below.'
-            : null;
+    const printReason = !data ? 'Loading the file list...' : !caps.print.available ? caps.print.reason : !file ? 'Pick an STL or 3MF file below.' : null;
     const printBtn = h('button', { type: 'button', class: 'finder-btn finder-btn-primary', id: 'finder-print-btn', disabled: Boolean(printReason || d.busy), 'aria-expanded': print.open ? 'true' : 'false', onClick: togglePrint }, icon('printer'), h('span', { text: 'Print on P1S' }));
     wrap.append(h('div', { class: 'finder-actionrow' }, printBtn, openBtn, externalLink(d.item.url, [h('span', { text: `Open on ${SITE_LABEL[d.item.site] || d.item.site}` }), icon('external')], 'finder-btn finder-btn-ghost')));
     const reasons = [];

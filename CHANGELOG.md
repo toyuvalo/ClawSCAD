@@ -10,16 +10,16 @@ matching `## [x.y.z]` section below, so keep the heading format exact.
 ### Added
 
 - **Find & Print.** A third tab next to Make and Workbench, in the desktop app
-  and the web build. One search box queries MakerWorld and Printables in
-  parallel and shows one list of cards (cover, title, author, likes,
-  downloads, licence, site badge). Site chips filter it. Thingiverse is a
-  stub that says it needs an API token.
+  and the web build. One search box queries Printables (the only live source)
+  and shows cards (cover, title, author, likes, downloads, licence, site
+  badge). Thingiverse, MyMiniFactory and Cults3D are listed as stubs that say
+  "needs API key" and never make a request. MakerWorld is deliberately not
+  connected.
   - **Details.** Gallery, description (plain text), author, licence with a
     plain-words summary, the file list, and a link back to the source page.
   - **Download** (Printables): one STL or 3MF per click into
     `<workspace>/models/printables-<id>/` with a `source.json` (url, author,
-    licence, fetched). Anonymous; no login. MakerWorld downloads need a Bambu
-    login this app does not have, so that button says so.
+    licence, fetched). Anonymous; no login.
   - **Open in ClawSCAD:** copies the mesh to `meshes/<slug>.stl` (a 3MF is
     converted to STL; ZIP64 3MFs such as Fusion 360 exports are read) and
     writes a NEW mesh-derived checkpoint `.scad` at the
@@ -35,12 +35,18 @@ matching `## [x.y.z]` section below, so keep the heading format exact.
 - **Politeness.** At most one request per second per site, a 15-minute search
   cache and 1-hour detail cache (memory plus files under app userData), the
   last good answer shown (marked old) when a site stops answering, and one
-  site failing never hides the other's results. Downloaded model files are
+  source failing never hides another's results. The app names itself in its
+  `User-Agent`; it imitates no other program. Downloaded model files are
   never served back by the web server (`/api/model/file` and
   `/api/model/download` refuse `models/`).
-- **Offline mode for tests.** `CLAWSCAD_FINDER_FIXTURES=<dir>` answers both
-  sites from recorded responses and replaces the slicer and printer tools with
+- **Offline mode for tests.** `CLAWSCAD_FINDER_FIXTURES=<dir>` answers
+  Printables from recorded responses and replaces the slicer and printer tools with
   a fake that starts no process.
+
+- **One backend for every client.** All of it is plain modules in
+  `main/finder/` (adapters, normalizer, cache, rate limiter, download,
+  slicing, printer). `web/server.js` serves them at `/api/finder/*`, so a
+  phone app can call the same backend. Printing stays desktop-only.
 
 ### Changed
 

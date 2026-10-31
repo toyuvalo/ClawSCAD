@@ -117,7 +117,7 @@ fits, threads, mating parts) should be modelled parametrically from the start.
 
 ## Find & Print
 
-The **Find & Print** tab searches MakerWorld and Printables from one box, shows
+The **Find & Print** tab searches Printables from one box, shows
 the results as cards, and gives every model a page with its pictures,
 description, author, licence and file list.
 
@@ -129,9 +129,9 @@ description, author, licence and file list.
   slices with the Bambu Studio CLI and the flat P1S presets, shows a fresh
   chamber picture, and sends the print only after you tick "The bed is clear".
   The printer must be IDLE or FINISH.
-- **MakerWorld files** need a Bambu account login that this app does not have, so
-  those models show their page and an "Open on MakerWorld" link instead.
-  **Thingiverse** needs an API token and is shown as unavailable.
+- **Other sources.** Thingiverse, MyMiniFactory and Cults3D need an API key that
+  this app does not have, so they appear as chips that say "needs API key" and
+  make no request. MakerWorld is not connected.
 - It asks each site at most once per second, keeps answers for 15 minutes (a
   model page for an hour), and never serves downloaded files back over the web
   build. Keep the author credit and the licence; files are for your own use.

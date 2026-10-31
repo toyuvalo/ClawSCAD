@@ -94,7 +94,7 @@ test.describe.serial('Find & Print, web build', () => {
     }
   });
 
-  test('the tab appears, a search shows both sites and a model page opens', async ({ page }) => {
+  test('the tab appears, a search shows Printables cards and a model page opens', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(base + '/');
@@ -108,9 +108,10 @@ test.describe.serial('Find & Print, web build', () => {
     await page.locator('#finder-query').fill('gridfinity');
     await page.keyboard.press('Enter');
     const cards = page.locator('.finder-card:not(.is-skeleton)');
-    await expect(cards).toHaveCount(6, { timeout: 15000 });
-    await expect(page.locator('.finder-card[data-site="makerworld"]')).toHaveCount(3);
+    await expect(cards).toHaveCount(3, { timeout: 15000 });
     await expect(page.locator('.finder-card[data-site="printables"]')).toHaveCount(3);
+    await expect(page.locator('.finder-chip[data-site="cults3d"]')).toBeDisabled();
+    expect((await page.locator('#finder').innerText()).toLowerCase()).not.toContain('makerworld');
 
     await page.locator('.finder-card[data-id="printables:543553"]').click();
     await expect(page.locator('#finder-title')).toContainText('Gridfinity Storage Box by Pred');
@@ -154,15 +155,8 @@ test.describe.serial('Find & Print, web build', () => {
     expect(ok.status()).toBe(200);
   });
 
-  test('MakerWorld pages say what is missing, and the printer routes refuse', async ({ page }) => {
+  test('the printer routes refuse in the browser build', async ({ page }) => {
     await page.goto(base + '/');
-    await page.locator('#view-finder').click();
-    await page.locator('#finder-query').fill('gridfinity');
-    await page.keyboard.press('Enter');
-    await page.locator('.finder-card[data-id="makerworld:1685835"]').click();
-    await expect(page.locator('#finder-print-why')).toContainText('Needs Bambu login');
-    await expect(page.locator('#finder-open-btn')).toBeDisabled();
-
     for (const route of ['/api/finder/printer-status', '/api/finder/print-prepare', '/api/finder/print-start']) {
       const res = await page.request.post(base + route, { data: {}, headers: { 'content-type': 'application/json' } });
       expect(res.status(), route).toBe(403);

@@ -26,16 +26,18 @@ const {
   interleave,
   normalizePrintablesHit,
   normalizePrintablesDetail,
-  normalizeMakerWorldHit,
-  normalizeMakerWorldDetail,
+  SITES,
 } = require('../main/finder/normalize.js');
-const { createMakerWorldAdapter, USER_AGENT: MW_UA } = require('../main/finder/adapters/makerworld.js');
 const {
   createPrintablesAdapter,
   isPrintablesFileUrl,
   GRAPHQL: PR_GRAPHQL,
 } = require('../main/finder/adapters/printables.js');
-const { createThingiverseAdapter } = require('../main/finder/adapters/thingiverse.js');
+const {
+  createThingiverseAdapter,
+  createMyMiniFactoryAdapter,
+  createCults3dAdapter,
+} = require('../main/finder/adapters/key-stubs.js');
 const { createFinder, SEARCH_TTL_MS } = require('../main/finder/index.js');
 const { createFixtureFetch } = require('../main/finder/fixture-fetch.js');
 
@@ -430,24 +432,8 @@ async function check(name, fn) {
   });
 
   await check('normalize: normalizers check field-by-field against recorded fixtures', async () => {
-    const mwSearchRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'makerworld-search.json'), 'utf-8'));
-    const mwDesignRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'makerworld-design.json'), 'utf-8'));
     const prSearchRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'printables-search.json'), 'utf-8'));
     const prDetailRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'printables-detail.json'), 'utf-8'));
-
-    // MakerWorld search hit
-    const mwHit = normalizeMakerWorldHit(mwSearchRaw.hits[0]);
-    assert.ok(mwHit);
-    assert.strictEqual(typeof mwHit.id, 'string');
-    assert.strictEqual(mwHit.site, 'makerworld');
-    assert.strictEqual(mwHit.siteId, '1685835');
-    assert.match(mwHit.url, /^https:\/\/makerworld\.com\/en\/models\/1685835-/);
-    assert.match(mwHit.cover, /^https:\/\//);
-    assert.strictEqual(typeof mwHit.likes, 'number');
-    assert.strictEqual(typeof mwHit.downloads, 'number');
-    assert.strictEqual(typeof mwHit.prints, 'number');
-    assert.notStrictEqual(mwHit.likes, undefined);
-    assert.notStrictEqual(mwHit.likes, 'undefined');
 
     // Printables search hit
     const prHit = normalizePrintablesHit(prSearchRaw.data.searchPrints2.items[0]);
@@ -459,21 +445,13 @@ async function check(name, fn) {
     assert.match(prHit.cover, /^https:\/\//);
     assert.strictEqual(typeof prHit.likes, 'number');
     assert.strictEqual(typeof prHit.downloads, 'number');
-    assert.strictEqual(prHit.prints, null); // prints count not given by Printables search, must be null not undefined
-    assert.notStrictEqual(prHit.prints, undefined);
-    assert.notStrictEqual(prHit.prints, 'undefined');
-
-    // MakerWorld detail
-    const mwDetail = normalizeMakerWorldDetail(mwDesignRaw);
-    assert.ok(mwDetail);
-    assert.strictEqual(mwDetail.site, 'makerworld');
-    assert.strictEqual(mwDetail.download.available, false);
-    assert.strictEqual(mwDetail.download.reason, 'needs-login');
-    assert.ok(Array.isArray(mwDetail.plates) && mwDetail.plates.length > 0);
-    assert.ok(Array.isArray(mwDetail.files) && mwDetail.files.length > 0);
-    for (const f of mwDetail.files) {
-      assert.strictEqual(f.downloadable, false);
-      assert.strictEqual(f.reasonShort, 'Needs Bambu login');
+    assert.strictEqual(prHit.licence, 'CC BY-NC');
+    assert.strictEqual(prHit.author, 'Pred');
+    assert.strictEqual(prHit.authorUrl, 'https://www.printables.com/@Pred');
+    // no field is ever the string "undefined" or the value undefined
+    for (const [k, v] of Object.entries(prHit)) {
+      assert.notStrictEqual(v, undefined, k);
+      assert.notStrictEqual(v, 'undefined', k);
     }
 
     // Printables detail
@@ -516,24 +494,19 @@ async function check(name, fn) {
 
   // ── 5. adapters ──────────────────────────────────────────────────────────
 
-  await check('adapters: makerworld search URL contains keyword, limit, offset and exact User-Agent', async () => {
+  await check('scope: Printables is the only live site, and the app never presents itself as another program', async () => {
+    assert.deepStrictEqual(Object.keys(SITES).sort(), ['cults3d', 'myminifactory', 'printables', 'thingiverse']);
     let captured = null;
     const http = {
       json: async (site, url, opts) => {
         captured = { site, url, opts };
-        return { hits: [], total: 0 };
+        return { data: { searchPrints2: { totalCount: 0, items: [] } } };
       },
     };
-    const mw = createMakerWorldAdapter({ http });
-    await mw.search('gridfinity box', { limit: 12, offset: 24 });
-
-    assert.ok(captured);
-    assert.strictEqual(captured.site, 'makerworld');
-    assert.ok(captured.url.includes('keyword=gridfinity%20box'));
-    assert.ok(captured.url.includes('limit=12'));
-    assert.ok(captured.url.includes('offset=24'));
-    assert.strictEqual(captured.opts.headers['User-Agent'], 'BambuStudio/01.10.00.00');
-    assert.strictEqual(MW_UA, 'BambuStudio/01.10.00.00');
+    await createPrintablesAdapter({ http }).search('x');
+    const ua = captured.opts.headers['User-Agent'];
+    assert.ok(ua.startsWith('ClawSCAD'), `User-Agent should name this app, got ${ua}`);
+    assert.ok(!/bambu|prusa|mozilla|chrome/i.test(ua), `User-Agent must not imitate another program: ${ua}`);
   });
 
   await check('adapters: printables search is GraphQL POST with variables and digits-only id validation', async () => {
@@ -609,41 +582,62 @@ async function check(name, fn) {
     );
   });
 
-  await check('adapters: thingiverse adapter search, detail, and download throw "needs-token"', async () => {
-    const tv = createThingiverseAdapter({ env: {} });
-    assert.strictEqual(tv.available, false);
-    assert.strictEqual(tv.reason, 'needs-token');
-    await assert.rejects(() => tv.search('test'), (err) => err instanceof FinderError && err.code === 'needs-token');
-    await assert.rejects(() => tv.detail('123'), (err) => err instanceof FinderError && err.code === 'needs-token');
-    await assert.rejects(() => tv.download(), (err) => err instanceof FinderError && err.code === 'needs-token');
+  await check('adapters: Thingiverse, MyMiniFactory and Cults3D are stubs that say "needs API key" and never fetch', async () => {
+    const stubs = [
+      ['thingiverse', 'Thingiverse', createThingiverseAdapter],
+      ['myminifactory', 'MyMiniFactory', createMyMiniFactoryAdapter],
+      ['cults3d', 'Cults3D', createCults3dAdapter],
+    ];
+    for (const [id, label, make] of stubs) {
+      const s = make({ env: {} });
+      assert.strictEqual(s.id, id);
+      assert.strictEqual(s.available, false);
+      assert.strictEqual(s.reason, 'needs-key');
+      for (const call of [() => s.search('test'), () => s.detail('123'), () => s.download()]) {
+        await assert.rejects(call, (err) => {
+          assert.ok(err instanceof FinderError);
+          assert.strictEqual(err.code, 'needs-key');
+          assert.ok(err.message.includes(label) && err.message.includes('API key'), err.message);
+          return true;
+        });
+      }
+    }
+  });
+
+  await check('adapters: a stub whose key is set still refuses, and says the support is not built', async () => {
+    const s = createMyMiniFactoryAdapter({ env: { MYMINIFACTORY_API_KEY: 'sekret-value-123' } });
+    await assert.rejects(
+      () => s.search('a'),
+      (err) => err.code === 'needs-key' && /not built yet/.test(err.message) && !err.message.includes('sekret-value-123') // the key value is never echoed
+    );
   });
 
   // ── 6. index.js createFinder aggregator ──────────────────────────────────
 
-  await check('finder: search returns interleaved items from both sites with per-site status', async () => {
+  await check('finder: a default search asks Printables only, and nothing else is ever contacted', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-finder-'));
     try {
+      const calls = [];
       const finder = createFinder({
         cacheDir: tmpDir,
-        fetchImpl: createFixtureFetch(FIXTURES_DIR),
+        fetchImpl: createFixtureFetch(FIXTURES_DIR, { calls }),
         minIntervalMs: 0,
       });
 
       const res = await finder.search({ query: 'gridfinity' });
       assert.strictEqual(res.ok, true);
-      assert.ok(res.items.length > 0);
-      assert.strictEqual(res.sites.makerworld.status, 'ok');
+      assert.strictEqual(res.items.length, 3);
+      assert.ok(res.items.every((i) => i.site === 'printables'));
+      assert.deepStrictEqual(Object.keys(res.sites), ['printables']);
       assert.strictEqual(res.sites.printables.status, 'ok');
-
-      const sitesFound = new Set(res.items.map((i) => i.site));
-      assert.ok(sitesFound.has('makerworld'), 'must contain makerworld items');
-      assert.ok(sitesFound.has('printables'), 'must contain printables items');
+      assert.ok(calls.length > 0);
+      assert.ok(calls.every((c) => new URL(c.url).hostname === 'api.printables.com'), JSON.stringify(calls.map((c) => c.url)));
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  await check('finder: "fail-pr zzz" still returns MakerWorld items with sites.printables.status "error" and code "blocked"', async () => {
+  await check('finder: "fail-pr zzz" reports the Printables failure as a status with code "blocked", not as a crash', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-finder-'));
     try {
       const finder = createFinder({
@@ -654,17 +648,37 @@ async function check(name, fn) {
 
       const res = await finder.search({ query: 'fail-pr zzz' });
       assert.strictEqual(res.ok, true);
-      assert.strictEqual(res.sites.makerworld.status, 'ok');
       assert.strictEqual(res.sites.printables.status, 'error');
       assert.strictEqual(res.sites.printables.error.code, 'blocked');
-      assert.ok(res.items.length > 0);
-      assert.ok(res.items.every((i) => i.site === 'makerworld'));
+      assert.deepStrictEqual(res.items, []);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  await check('finder: "zzempty" search returns items [] and count 0 on both sites', async () => {
+  await check('finder: a failing stub never hides Printables results when both are asked for', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-finder-'));
+    try {
+      const finder = createFinder({
+        cacheDir: tmpDir,
+        fetchImpl: createFixtureFetch(FIXTURES_DIR),
+        minIntervalMs: 0,
+      });
+
+      const res = await finder.search({ query: 'gridfinity', sites: ['printables', 'thingiverse', 'myminifactory', 'cults3d'] });
+      assert.strictEqual(res.ok, true);
+      assert.strictEqual(res.items.length, 3);
+      assert.strictEqual(res.sites.printables.status, 'ok');
+      for (const id of ['thingiverse', 'myminifactory', 'cults3d']) {
+        assert.strictEqual(res.sites[id].status, 'unavailable', id);
+        assert.strictEqual(res.sites[id].error.code, 'needs-key', id);
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  await check('finder: "zzempty" search returns items [] and count 0', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-finder-'));
     try {
       const finder = createFinder({
@@ -676,9 +690,7 @@ async function check(name, fn) {
       const res = await finder.search({ query: 'zzempty' });
       assert.strictEqual(res.ok, true);
       assert.deepStrictEqual(res.items, []);
-      assert.strictEqual(res.sites.makerworld.count, 0);
       assert.strictEqual(res.sites.printables.count, 0);
-      assert.strictEqual(res.sites.makerworld.status, 'ok');
       assert.strictEqual(res.sites.printables.status, 'ok');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -722,23 +734,31 @@ async function check(name, fn) {
     }
   });
 
-  await check('finder: sites:["thingiverse"] reports status "unavailable" and unknown sites are ignored', async () => {
+  await check('finder: sites:["thingiverse"] reports status "unavailable"; unknown and removed sites are ignored', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-finder-'));
     try {
+      const calls = [];
       const finder = createFinder({
         cacheDir: tmpDir,
-        fetchImpl: createFixtureFetch(FIXTURES_DIR),
+        fetchImpl: createFixtureFetch(FIXTURES_DIR, { calls }),
         minIntervalMs: 0,
       });
 
       const resTv = await finder.search({ query: 'gridfinity', sites: ['thingiverse'] });
       assert.strictEqual(resTv.ok, true);
       assert.strictEqual(resTv.sites.thingiverse.status, 'unavailable');
+      assert.strictEqual(calls.length, 0, 'a stub must not make a request');
 
-      const resIgnored = await finder.search({ query: 'gridfinity', sites: ['makerworld', 'nonexistent_site'] });
+      const resIgnored = await finder.search({ query: 'gridfinity', sites: ['printables', 'makerworld', 'nonexistent_site'] });
       assert.strictEqual(resIgnored.ok, true);
-      assert.strictEqual(resIgnored.sites.makerworld.status, 'ok');
-      assert.strictEqual(resIgnored.sites.nonexistent_site, undefined);
+      assert.deepStrictEqual(Object.keys(resIgnored.sites), ['printables']);
+
+      // only names that are not sites at all: refused, nothing requested
+      const before = calls.length;
+      const none = await finder.search({ query: 'gridfinity', sites: ['makerworld'] });
+      assert.strictEqual(none.ok, false);
+      assert.strictEqual(none.error.code, 'bad-request');
+      assert.strictEqual(calls.length, before);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -762,7 +782,6 @@ async function check(name, fn) {
       const res2 = await finder.search({ query: 'gridfinity' });
       assert.strictEqual(res2.ok, true);
       assert.strictEqual(calls.length, callCountAfterFirst, 'fetch count must remain unchanged for cached query');
-      assert.strictEqual(res2.sites.makerworld.cached, true);
       assert.strictEqual(res2.sites.printables.cached, true);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -790,8 +809,8 @@ async function check(name, fn) {
       // 1. Initial success
       const res1 = await finder.search({ query: 'gridfinity' });
       assert.strictEqual(res1.ok, true);
-      assert.strictEqual(res1.sites.makerworld.status, 'ok');
-      assert.strictEqual(res1.sites.makerworld.cached, false);
+      assert.strictEqual(res1.sites.printables.status, 'ok');
+      assert.strictEqual(res1.sites.printables.cached, false);
 
       // 2. Advance time past SEARCH_TTL_MS and enable failure
       nowMs += SEARCH_TTL_MS + 10000;
@@ -799,9 +818,9 @@ async function check(name, fn) {
 
       const resStale = await finder.search({ query: 'gridfinity' });
       assert.strictEqual(resStale.ok, true);
-      assert.strictEqual(resStale.sites.makerworld.status, 'stale');
-      assert.strictEqual(resStale.sites.makerworld.stale, true);
-      assert.strictEqual(resStale.sites.makerworld.cached, true);
+      assert.strictEqual(resStale.sites.printables.status, 'stale');
+      assert.strictEqual(resStale.sites.printables.stale, true);
+      assert.strictEqual(resStale.sites.printables.cached, true);
       assert.ok(resStale.items.length > 0, 'stale items should still be returned');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -820,15 +839,17 @@ async function check(name, fn) {
 
       await finder.search({ query: 'gridfinity', page: 2, limit: 10 });
       // page 2 * limit 10 = offset 20
-      const mwCall = calls.find((c) => c.url.includes('api.bambulab.com'));
-      assert.ok(mwCall);
-      assert.ok(mwCall.url.includes('limit=10&offset=20'), `expected offset=20 in MW url: ${mwCall.url}`);
+      const call = calls.find((c) => c.method === 'POST' && c.url.includes('api.printables.com') && /searchPrints2/.test(c.body || ''));
+      assert.ok(call);
+      const vars = JSON.parse(call.body).variables;
+      assert.strictEqual(vars.limit, 10);
+      assert.strictEqual(vars.offset, 20);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  await check('finder: detail() for printables 543553 and makerworld 1685835 are ok and cached', async () => {
+  await check('finder: detail() for printables 543553 is ok, then served from cache', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-finder-'));
     try {
       const finder = createFinder({
@@ -846,14 +867,10 @@ async function check(name, fn) {
       assert.strictEqual(dPrCached.ok, true);
       assert.strictEqual(dPrCached.cached, true);
 
-      const dMw = await finder.detail({ site: 'makerworld', id: '1685835' });
-      assert.strictEqual(dMw.ok, true);
-      assert.strictEqual(dMw.cached, false);
-      assert.strictEqual(dMw.detail.siteId, '1685835');
-
-      const dMwCached = await finder.detail({ site: 'makerworld', id: '1685835' });
-      assert.strictEqual(dMwCached.ok, true);
-      assert.strictEqual(dMwCached.cached, true);
+      // a removed or unknown site is refused, not looked up
+      const gone = await finder.detail({ site: 'makerworld', id: '1685835' });
+      assert.strictEqual(gone.ok, false);
+      assert.strictEqual(gone.error.code, 'bad-request');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -876,7 +893,7 @@ async function check(name, fn) {
     }
   });
 
-  await check('finder: download() for site makerworld returns needs-login', async () => {
+  await check('finder: download() for a stub site says needs-key, and for an unknown site is refused', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-finder-'));
     try {
       const finder = createFinder({
@@ -885,9 +902,12 @@ async function check(name, fn) {
         minIntervalMs: 0,
       });
 
-      const res = await finder.download({ site: 'makerworld', id: '1685835', fileId: '1' });
+      const res = await finder.download({ site: 'thingiverse', id: '763622', fileId: '1' });
       assert.strictEqual(res.ok, false);
-      assert.strictEqual(res.error.code, 'needs-login');
+      assert.strictEqual(res.error.code, 'needs-key');
+      const gone = await finder.download({ site: 'makerworld', id: '1685835', fileId: '1' });
+      assert.strictEqual(gone.ok, false);
+      assert.strictEqual(gone.error.code, 'unsupported');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
