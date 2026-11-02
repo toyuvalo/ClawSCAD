@@ -4,9 +4,16 @@
 # and it cannot see a process that is alive yet no longer serving. Both of those
 # gaps end as a 502 at clawscad.dvlce.ca with the task showing green.
 #
-# Probes the origin the way cloudflared does. Restarts only after every probe in
-# a run fails: a generation holds the box for ~10 minutes and a restart kills the
-# server-side chain with it, so a single slow reply must never be enough.
+# Probes loopback. Restarts only after every probe in a run fails: a generation
+# holds the box for ~10 minutes and a restart kills the server-side chain with
+# it, so a single slow reply must never be enough.
+#
+# Then probes the tunnel origin (the tailnet address cloudflared on the Mac Mini
+# uses). Loopback up + origin down = a bind or firewall problem, not a crash:
+# 2026-11-02 the task ran with --host 127.0.0.1 and clawscad.dvlce.ca was dead
+# while this script reported healthy. A restart cannot fix that, so it only logs
+# MISBOUND and exits 2. The Kuma monitor on the Mac is the alarm for that case
+# (scripts/kuma_add_origin_probe.py).
 
 [CmdletBinding()]
 param(
@@ -15,7 +22,8 @@ param(
   [int]    $Probes       = 3,
   [int]    $ProbeGapSec  = 15,
   [int]    $TimeoutSec   = 10,
-  [string] $LogPath      = 'E:\clawscad-app\web-watchdog.log'
+  [string] $LogPath      = 'E:\clawscad-app\web-watchdog.log',
+  [string] $OriginHost   = '100.95.28.29'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,10 +43,11 @@ function Write-Log {
 }
 
 function Test-Origin {
+  param([string] $HostName = '127.0.0.1')
   # /api/pipeline/status is a cheap read and, unlike /, is served even when the
   # workspace registry is mid-write.
   try {
-    $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/pipeline/status" `
+    $r = Invoke-WebRequest -Uri "http://${HostName}:$Port/api/pipeline/status" `
                            -TimeoutSec $TimeoutSec -UseBasicParsing
     return ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500)
   } catch {
@@ -52,7 +61,13 @@ for ($i = 1; $i -le $Probes; $i++) {
   if ($i -lt $Probes) { Start-Sleep -Seconds $ProbeGapSec }
 }
 
-if ($healthy) { exit 0 }
+if ($healthy) {
+  if ($OriginHost -and -not (Test-Origin -HostName $OriginHost)) {
+    Write-Log "MISBOUND: loopback answers but the tunnel origin http://${OriginHost}:$Port does not - check the task's --host (must be 0.0.0.0) and the firewall. Not restarting."
+    exit 2
+  }
+  exit 0
+}
 
 Write-Log "UNHEALTHY: $Probes/$Probes probes failed on port $Port - restarting '$TaskName'"
 

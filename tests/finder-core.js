@@ -695,27 +695,60 @@ async function check(name, fn) {
     );
   });
 
-  await check('token resolver: bambu-token resolves from env, SSH fallback, caches 1h, drops on command', () => {
+  await check('token resolver: bambu-token resolves from env, SSH fallback, caches 1h, drops on command', async () => {
     dropBambuTokenCache();
     // 1. Env
-    const tok1 = resolveBambuToken({ env: { BAMBU_CLOUD_TOKEN: 'env-tok-123' } });
+    const tok1 = await resolveBambuToken({ env: { BAMBU_CLOUD_TOKEN: 'env-tok-123' } });
     assert.strictEqual(tok1, 'env-tok-123');
 
     // Cached hit even when env is removed
-    const tok2 = resolveBambuToken({ env: {} });
+    const tok2 = await resolveBambuToken({ env: {} });
     assert.strictEqual(tok2, 'env-tok-123');
 
     // Drop cache
     dropBambuTokenCache();
     let sshCalled = false;
-    const fakeExec = (cmd) => {
+    const fakeExec = async () => {
       sshCalled = true;
       return 'ssh-tok-456\n';
     };
-    const tok3 = resolveBambuToken({ env: {}, exec: fakeExec });
+    const tok3 = await resolveBambuToken({ env: {}, exec: fakeExec });
     assert.strictEqual(sshCalled, true);
     assert.strictEqual(tok3, 'ssh-tok-456');
 
+    dropBambuTokenCache();
+  });
+
+  await check('token resolver: SSH fetch is async execFile (no shell string) and concurrent callers share one fetch', async () => {
+    dropBambuTokenCache();
+    const calls = [];
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const fakeExec = async (file, args) => {
+      calls.push({ file, args });
+      await gate;
+      return 'ssh-tok-789\n';
+    };
+    // The resolver must return a promise, not block: start two lookups, then let the fetch finish.
+    const p1 = resolveBambuToken({ env: {}, exec: fakeExec });
+    const p2 = resolveBambuToken({ env: {}, exec: fakeExec });
+    assert.ok(p1 && typeof p1.then === 'function', 'resolveBambuToken must return a promise');
+    release();
+    const [a, b] = await Promise.all([p1, p2]);
+    assert.strictEqual(a, 'ssh-tok-789');
+    assert.strictEqual(b, 'ssh-tok-789');
+    assert.strictEqual(calls.length, 1, 'concurrent cache misses must share one SSH fetch');
+    assert.strictEqual(calls[0].file, 'ssh', 'runs the ssh binary directly, not a shell string');
+    assert.ok(Array.isArray(calls[0].args), 'args are an array (execFile), not a command line');
+    assert.ok(calls[0].args.includes('BatchMode=yes'), 'BatchMode keeps ssh from prompting');
+    assert.strictEqual(calls[0].args[calls[0].args.length - 1], '~/bin/onecli-reveal.sh bambu-cloud-token');
+
+    // A failed fetch resolves null, never throws, and clears the in-flight slot.
+    dropBambuTokenCache();
+    const failed = await resolveBambuToken({ env: {}, exec: async () => { throw new Error('ssh: timeout'); } });
+    assert.strictEqual(failed, null);
+    const after = await resolveBambuToken({ env: {}, exec: async () => 'ssh-tok-after\n' });
+    assert.strictEqual(after, 'ssh-tok-after');
     dropBambuTokenCache();
   });
 

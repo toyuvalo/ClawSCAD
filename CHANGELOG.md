@@ -5,6 +5,26 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.8.3] - 2026-11-02
+
+### Fixed
+
+- **MakerWorld token lookup no longer freezes the web server.** `main/finder/bambu-token.js`
+  fetched the Bambu login with a blocking `execSync` shell string (up to 12 s on every cache
+  miss, once an hour). It now runs `ssh` through async `execFile` (no shell), and concurrent
+  cache misses share one fetch. The MakerWorld adapter awaits it.
+- **The watchdog now sees a dead tunnel origin.** On 2026-11-02 the `ClawSCAD-Studio-Web` task
+  ran with `--host 127.0.0.1`, so clawscad.dvlce.ca had no route to the server while the
+  loopback-only watchdog stayed green. The task now binds `0.0.0.0` (firewall: home LAN rule +
+  `Tailscale-In`). `scripts/studio-web-watchdog.ps1` also probes the tailnet origin
+  (`-OriginHost`, default `100.95.28.29`) and logs `MISBOUND` (exit 2, no restart) when loopback
+  answers but the origin does not.
+
+### Added
+
+- `scripts/kuma_add_origin_probe.py`: a Kuma HTTP monitor on the Mac Mini that probes the exact
+  path cloudflared uses (`http://100.95.28.29:8730/api/pipeline/status`, every 5 min, ntfy alert).
+  Created as monitor 117.
 ## [0.8.2] - 2026-11-01
 
 ### Added

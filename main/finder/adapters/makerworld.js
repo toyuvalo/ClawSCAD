@@ -75,7 +75,7 @@ function createMakerWorldAdapter({ http, env, tokenResolver = resolveBambuToken 
     const instanceId = parseInstanceId(rawInstanceId);
     if (!instanceId) throw new FinderError('bad-request', 'That is not a MakerWorld instance number.');
 
-    const token = tokenResolver({ env });
+    const token = await tokenResolver({ env });
     if (!token) {
       throw new FinderError('needs-login', 'MakerWorld login expired or missing — the agent refreshes bambu-cloud-token', {
         site: 'makerworld',
