@@ -12,7 +12,7 @@ const path = require('path');
 const { createFinderFromEnv } = require('./finder/index.js');
 
 // Only these hosts may be opened in the user's browser from a model page.
-const EXTERNAL_HOSTS = [/(^|\.)printables\.com$/i, /(^|\.)creativecommons\.org$/i];
+const EXTERNAL_HOSTS = [/(^|\.)makerworld\.com$/i, /(^|\.)printables\.com$/i, /(^|\.)bambulab\.com$/i, /(^|\.)creativecommons\.org$/i];
 
 function isAllowedExternal(url) {
   try {

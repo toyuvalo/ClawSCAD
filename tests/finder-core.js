@@ -32,6 +32,10 @@ const {
   normalizeMyMiniFactoryDetail,
   normalizeCults3dHit,
   normalizeCults3dDetail,
+  normalizeMakerWorldHit,
+  normalizeMakerWorldDetail,
+  makerworldModelUrl,
+  profileScore,
   SITES,
 } = require('../main/finder/normalize.js');
 const {
@@ -49,6 +53,14 @@ const {
 const {
   createCults3dAdapter,
 } = require('../main/finder/adapters/cults3d.js');
+const {
+  createMakerWorldAdapter,
+  isMakerWorldFileUrl,
+} = require('../main/finder/adapters/makerworld.js');
+const {
+  resolveBambuToken,
+  dropBambuTokenCache,
+} = require('../main/finder/bambu-token.js');
 const { createFinder, SEARCH_TTL_MS } = require('../main/finder/index.js');
 const { createFixtureFetch } = require('../main/finder/fixture-fetch.js');
 
@@ -569,10 +581,43 @@ async function check(name, fn) {
     }
   });
 
+
+  await check('normalize: MakerWorld hits and details parse fixtures, sort profiles by P1S/0.4 preference', async () => {
+    const mwSearchRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'makerworld-search.json'), 'utf-8'));
+    const mwDetailRaw = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, 'makerworld-design.json'), 'utf-8'));
+
+    const hit = normalizeMakerWorldHit(mwSearchRaw.hits[0]);
+    assert.strictEqual(hit.id, 'makerworld:1685835');
+    assert.strictEqual(hit.site, 'makerworld');
+    assert.strictEqual(hit.siteId, '1685835');
+    assert.strictEqual(hit.title, 'Lightest Gridfinity Base Ever - Customizable');
+    assert.strictEqual(hit.author, 'Sparky');
+    assert.strictEqual(hit.likes, 5328);
+    assert.strictEqual(hit.downloads, 37785);
+    assert.strictEqual(hit.prints, 25397);
+    assert.strictEqual(hit.licence, 'Standard Digital File License');
+
+    const detail = normalizeMakerWorldDetail(mwDetailRaw);
+    assert.strictEqual(detail.id, 'makerworld:1685835');
+    assert.strictEqual(detail.download.available, true);
+    assert.strictEqual(detail.files.length, 2);
+    // Profile ordering: 0.4 nozzle instance (1786350) sorted before 0.8 nozzle instance (1786370)
+    assert.strictEqual(detail.files[0].id, '1786350');
+    assert.strictEqual(detail.files[0].kind, '3mf');
+    assert.strictEqual(detail.files[0].downloadable, true);
+    assert.strictEqual(detail.files[1].id, '1786370');
+
+    // profileScore tests
+    assert.ok(profileScore('P1S 0.4 nozzle') > profileScore('0.4 nozzle'));
+    assert.ok(profileScore('0.4 nozzle') > profileScore('0.8mm nozzle'));
+    assert.ok(profileScore('X1 Carbon - 0.4') > profileScore('A1 Mini - 0.2'));
+    assert.strictEqual(profileScore('A1 Mini - 0.2'), 0);
+  });
+
   // ── 5. adapters ──────────────────────────────────────────────────────────
 
   await check('scope: Printables is the only live site, and the app never presents itself as another program', async () => {
-    assert.deepStrictEqual(Object.keys(SITES).sort(), ['cults3d', 'myminifactory', 'printables', 'thingiverse']);
+    assert.deepStrictEqual(Object.keys(SITES).sort(), ['cults3d', 'makerworld', 'myminifactory', 'printables', 'thingiverse']);
     let captured = null;
     const http = {
       json: async (site, url, opts) => {
@@ -584,6 +629,94 @@ async function check(name, fn) {
     const ua = captured.opts.headers['User-Agent'];
     assert.ok(ua.startsWith('ClawSCAD'), `User-Agent should name this app, got ${ua}`);
     assert.ok(!/bambu|prusa|mozilla|chrome/i.test(ua), `User-Agent must not imitate another program: ${ua}`);
+  });
+
+
+  await check('adapters: makerworld search and detail make requests with BambuStudio User-Agent', async () => {
+    let captured = [];
+    const http = {
+      json: async (site, url, opts) => {
+        captured.push({ site, url, opts });
+        if (url.includes('select/design2')) {
+          return { total: 1, hits: [{ id: 1685835, title: 'Sample' }] };
+        }
+        return { id: 1685835, title: 'Sample Detail', instances: [] };
+      },
+    };
+    const mw = createMakerWorldAdapter({ http });
+    await mw.search('gridfinity', { limit: 10, offset: 0 });
+    assert.strictEqual(captured.length, 1);
+    assert.strictEqual(captured[0].opts.headers['User-Agent'], 'BambuStudio/01.10.00.00');
+
+    await mw.detail('1685835');
+    assert.strictEqual(captured.length, 2);
+    assert.strictEqual(captured[1].opts.headers['User-Agent'], 'BambuStudio/01.10.00.00');
+
+    await assert.rejects(() => mw.detail('abc'), (err) => err instanceof FinderError && err.code === 'bad-request');
+  });
+
+  await check('adapters: makerworld downloadLink enforces auth token, 401/403 drops cache, and validates bblmw.com host', async () => {
+    assert.strictEqual(isMakerWorldFileUrl('https://makerworld.bblmw.com/fixture/1786350'), true);
+    assert.strictEqual(isMakerWorldFileUrl('https://cdn.bblmw.com/file.3mf'), true);
+    assert.strictEqual(isMakerWorldFileUrl('https://makerworld.bblmw.com.evil.com/x'), false);
+    assert.strictEqual(isMakerWorldFileUrl('http://makerworld.bblmw.com/x'), false);
+    assert.strictEqual(isMakerWorldFileUrl('not-a-url'), false);
+
+    // No token -> needs-login
+    const mwNoToken = createMakerWorldAdapter({ http: {}, env: {}, tokenResolver: () => null });
+    dropBambuTokenCache();
+    await assert.rejects(
+      () => mwNoToken.downloadLink('1685835', '1786350'),
+      (err) => err instanceof FinderError && err.code === 'needs-login'
+    );
+
+    // Bad host in response -> blocked
+    const httpBadHost = {
+      json: async () => ({
+        name: 'test.3mf',
+        url: 'https://evil.com/model.3mf',
+      }),
+    };
+    const mwBadHost = createMakerWorldAdapter({ http: httpBadHost, env: { BAMBU_CLOUD_TOKEN: 'valid-token' } });
+    await assert.rejects(
+      () => mwBadHost.downloadLink('1685835', '1786350'),
+      (err) => err instanceof FinderError && err.code === 'blocked'
+    );
+
+    // 401/403 -> needs-login and cache dropped
+    let statusErr = new FinderError('needs-login', 'Unauthorized', { status: 401 });
+    const httpAuthFail = {
+      json: async () => { throw statusErr; },
+    };
+    const mwAuthFail = createMakerWorldAdapter({ http: httpAuthFail, env: { BAMBU_CLOUD_TOKEN: 'valid-token' } });
+    await assert.rejects(
+      () => mwAuthFail.downloadLink('1685835', '1786350'),
+      (err) => err instanceof FinderError && err.code === 'needs-login'
+    );
+  });
+
+  await check('token resolver: bambu-token resolves from env, SSH fallback, caches 1h, drops on command', () => {
+    dropBambuTokenCache();
+    // 1. Env
+    const tok1 = resolveBambuToken({ env: { BAMBU_CLOUD_TOKEN: 'env-tok-123' } });
+    assert.strictEqual(tok1, 'env-tok-123');
+
+    // Cached hit even when env is removed
+    const tok2 = resolveBambuToken({ env: {} });
+    assert.strictEqual(tok2, 'env-tok-123');
+
+    // Drop cache
+    dropBambuTokenCache();
+    let sshCalled = false;
+    const fakeExec = (cmd) => {
+      sshCalled = true;
+      return 'ssh-tok-456\n';
+    };
+    const tok3 = resolveBambuToken({ env: {}, exec: fakeExec });
+    assert.strictEqual(sshCalled, true);
+    assert.strictEqual(tok3, 'ssh-tok-456');
+
+    dropBambuTokenCache();
   });
 
   await check('adapters: printables search is GraphQL POST with variables and digits-only id validation', async () => {
@@ -746,7 +879,7 @@ async function check(name, fn) {
 
   // ── 6. index.js createFinder aggregator ──────────────────────────────────
 
-  await check('finder: a default search asks Printables only, and nothing else is ever contacted', async () => {
+  await check('finder: a default search asks MakerWorld and Printables, and nothing else is ever contacted', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-test-finder-'));
     try {
       const calls = [];
@@ -758,12 +891,14 @@ async function check(name, fn) {
 
       const res = await finder.search({ query: 'gridfinity' });
       assert.strictEqual(res.ok, true);
-      assert.strictEqual(res.items.length, 3);
-      assert.ok(res.items.every((i) => i.site === 'printables'));
-      assert.deepStrictEqual(Object.keys(res.sites), ['printables']);
+      assert.strictEqual(res.items.length, 6);
+      assert.deepStrictEqual(Object.keys(res.sites).sort(), ['makerworld', 'printables']);
+      assert.strictEqual(res.sites.makerworld.status, 'ok');
       assert.strictEqual(res.sites.printables.status, 'ok');
       assert.ok(calls.length > 0);
-      assert.ok(calls.every((c) => new URL(c.url).hostname === 'api.printables.com'), JSON.stringify(calls.map((c) => c.url)));
+      for (const call of calls) {
+        assert.ok(call.url.includes('api.bambulab.com') || call.url.includes('api.printables.com'), call.url);
+      }
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -778,7 +913,7 @@ async function check(name, fn) {
         minIntervalMs: 0,
       });
 
-      const res = await finder.search({ query: 'fail-pr zzz' });
+      const res = await finder.search({ query: 'fail-pr zzz', sites: ['printables'] });
       assert.strictEqual(res.ok, true);
       assert.strictEqual(res.sites.printables.status, 'error');
       assert.strictEqual(res.sites.printables.error.code, 'blocked');
@@ -881,16 +1016,20 @@ async function check(name, fn) {
       assert.strictEqual(resTv.sites.thingiverse.status, 'unavailable');
       assert.strictEqual(calls.length, 0, 'a stub must not make a request');
 
-      const resIgnored = await finder.search({ query: 'gridfinity', sites: ['printables', 'makerworld', 'nonexistent_site'] });
+      const resIgnored = await finder.search({ query: 'gridfinity', sites: ['printables', 'nonexistent_site'] });
       assert.strictEqual(resIgnored.ok, true);
       assert.deepStrictEqual(Object.keys(resIgnored.sites), ['printables']);
 
       // only names that are not sites at all: refused, nothing requested
       const before = calls.length;
-      const none = await finder.search({ query: 'gridfinity', sites: ['makerworld'] });
+      const none = await finder.search({ query: 'gridfinity', sites: ['nonexistent_site'] });
       assert.strictEqual(none.ok, false);
       assert.strictEqual(none.error.code, 'bad-request');
       assert.strictEqual(calls.length, before);
+
+      const resMw = await finder.search({ query: 'gridfinity', sites: ['makerworld'] });
+      assert.strictEqual(resMw.ok, true);
+      assert.strictEqual(resMw.sites.makerworld.status, 'ok');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -915,6 +1054,7 @@ async function check(name, fn) {
       assert.strictEqual(res2.ok, true);
       assert.strictEqual(calls.length, callCountAfterFirst, 'fetch count must remain unchanged for cached query');
       assert.strictEqual(res2.sites.printables.cached, true);
+      assert.strictEqual(res2.sites.makerworld.cached, true);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -999,8 +1139,12 @@ async function check(name, fn) {
       assert.strictEqual(dPrCached.ok, true);
       assert.strictEqual(dPrCached.cached, true);
 
-      // a removed or unknown site is refused, not looked up
-      const gone = await finder.detail({ site: 'makerworld', id: '1685835' });
+      const dMw = await finder.detail({ site: 'makerworld', id: '1685835' });
+      assert.strictEqual(dMw.ok, true);
+      assert.strictEqual(dMw.detail.siteId, '1685835');
+
+      // an unknown site is refused, not looked up
+      const gone = await finder.detail({ site: 'nonexistent_site', id: '1685835' });
       assert.strictEqual(gone.ok, false);
       assert.strictEqual(gone.error.code, 'bad-request');
     } finally {
@@ -1075,6 +1219,18 @@ async function check(name, fn) {
       assert.strictEqual(d4Prefixed.ok, true);
       assert.strictEqual(d4Prefixed.detail.siteId, 'print-in-place-cute-lucky-bunny');
 
+      // MakerWorld detail and download accept both forms
+      const dMw1 = await finder.detail({ site: 'makerworld', id: '1685835' });
+      assert.strictEqual(dMw1.ok, true);
+      const dMw2 = await finder.detail({ site: 'makerworld', id: 'makerworld:1685835' });
+      assert.strictEqual(dMw2.ok, true);
+
+      process.env.BAMBU_CLOUD_TOKEN = 'test-token-mw';
+      const dlMw1 = await finder.download({ workspaceDir: tmpDir, site: 'makerworld', id: '1685835', fileId: '1786350' });
+      assert.strictEqual(dlMw1.ok, true);
+      const dlMw2 = await finder.download({ workspaceDir: tmpDir, site: 'makerworld', id: 'makerworld:1685835', fileId: '1786350' });
+      assert.strictEqual(dlMw2.ok, true);
+
       // Download accepts both forms for printables
       const dlShort = await finder.download({ workspaceDir: tmpDir, site: 'printables', id: '543553', fileId: '9990001' });
       assert.strictEqual(dlShort.ok, true);
@@ -1118,7 +1274,7 @@ async function check(name, fn) {
       const res = await finder.download({ site: 'thingiverse', id: '763622', fileId: '1' });
       assert.strictEqual(res.ok, false);
       assert.strictEqual(res.error.code, 'needs-key');
-      const gone = await finder.download({ site: 'makerworld', id: '1685835', fileId: '1' });
+      const gone = await finder.download({ site: 'unknown_site', id: '1685835', fileId: '1' });
       assert.strictEqual(gone.ok, false);
       assert.strictEqual(gone.error.code, 'unsupported');
     } finally {

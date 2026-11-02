@@ -5,6 +5,18 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.8.2] - 2026-11-01
+
+### Added
+
+- **Restored MakerWorld live source and Bambu Lab 3MF downloads.**
+  - **MakerWorld adapter:** Restored search (`/v1/search-service/select/design2`) and model detail (`/v1/design-service/design/{id}`) using BambuStudio User-Agent.
+  - **Print profile instances as downloadable files:** Detail view normalizes each profile instance to a downloadable file entry with `.3mf` extension, prioritizing Bambu P1S / X1 / P1P profiles and 0.4 mm nozzles first.
+  - **Authenticated download token resolver:** Added `main/finder/bambu-token.js` resolving owner Bambu login from `BAMBU_CLOUD_TOKEN` or `ssh -o BatchMode=yes dvlce@10.0.0.79 "~/bin/onecli-reveal.sh bambu-cloud-token"`, caching token in memory for 1 hour, clearing on 401/403, and strictly never logging or exposing token values.
+  - **Host allowlist:** Enforced `*.bblmw.com` / `makerworld.bblmw.com` for download redirects.
+  - **Dual default sites:** Enabled MakerWorld and Printables as default active search sources in Finder and Web Studio.
+  - **Offline fixtures & mutation tests:** Added recorded MakerWorld search, empty search, and design fixtures with offline testing in `fixture-fetch.js`, verified mutation resistance on host allowlist and token leak tests.
+
 ## [0.8.1] - 2026-10-31
 
 ### Added

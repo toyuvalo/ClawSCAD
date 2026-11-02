@@ -158,15 +158,13 @@ function toZip64(buf) {
   const mf = require(path.join(APP, 'main', 'model-finder.js'));
   await check('external links: only https pages on the sites we search may be opened', () => {
     const ok = mf._internal.isAllowedExternal;
-    for (const u of ['https://www.printables.com/model/1-x', 'https://creativecommons.org/licenses/by/4.0/']) assert.strictEqual(ok(u), true, u);
+    for (const u of ['https://www.printables.com/model/1-x', 'https://creativecommons.org/licenses/by/4.0/', 'https://makerworld.com/en/models/2-y', 'https://api.bambulab.com/']) assert.strictEqual(ok(u), true, u);
     for (const u of [
       'http://www.printables.com/model/1',
       'https://printables.com.evil.test/model/1',
       'https://evilprintables.com/x',
       'https://printables.com@evil.test/',
-      // sites that are NOT sources of this app: MakerWorld was removed by the owner; the key-stub sites have no pages to open yet
-      'https://makerworld.com/en/models/2-y',
-      'https://api.bambulab.com/',
+      // sites that are NOT sources of this app (the key-stub sites have no pages to open yet)
       'https://www.thingiverse.com/thing:1',
       'file:///C:/Windows/System32/calc.exe',
       'javascript:alert(1)',
@@ -176,29 +174,22 @@ function toZip64(buf) {
     ]) assert.strictEqual(ok(u), false, u);
   });
 
-  // ── scope: no MakerWorld ───────────────────────────────────────────────
-  await check('scope: MakerWorld is gone from the code, the fixtures and the UI (owner decision 2026-10-31)', () => {
-    const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
-    const files = [
-      ...walk(path.join(APP, 'main', 'finder')),
-      ...walk(FIXTURES).filter((f) => !f.endsWith('.py')),
-      path.join(APP, 'main', 'model-finder.js'),
-      path.join(APP, 'renderer', 'finder.js'),
-      path.join(APP, 'style-finder.css'),
-      path.join(APP, 'preload.js'),
-      path.join(APP, 'web', 'server.js'),
-      path.join(APP, 'web', 'api-shim.js'),
-      path.join(APP, 'web', 'entry.js'),
-    ];
-    assert.ok(files.length > 15);
-    const bad = [];
-    for (const f of files) {
-      const text = fs.readFileSync(f, 'utf-8');
-      const m = /makerworld|bambulab\.com|bambustudio\/\d/i.exec(text);
-      if (m) bad.push(path.relative(APP, f) + ': ' + m[0]);
-    }
-    assert.deepStrictEqual(bad, []);
-    assert.ok(!fs.existsSync(path.join(APP, 'main', 'finder', 'adapters', 'makerworld.js')));
+  // ── scope: MakerWorld restored ─────────────────────────────────────────
+  await check('scope: MakerWorld is wired in the code, fixtures and UI (owner decision 2026-11-01)', () => {
+    assert.ok(fs.existsSync(path.join(APP, 'main', 'finder', 'adapters', 'makerworld.js')), 'makerworld adapter must exist');
+    assert.ok(fs.existsSync(path.join(APP, 'main', 'finder', 'bambu-token.js')), 'bambu-token module must exist');
+    assert.ok(fs.existsSync(path.join(FIXTURES, 'makerworld-search.json')), 'makerworld search fixture must exist');
+    assert.ok(fs.existsSync(path.join(FIXTURES, 'makerworld-design.json')), 'makerworld design fixture must exist');
+
+    const { SITES } = require(path.join(APP, 'main', 'finder', 'normalize.js'));
+    assert.ok(SITES.makerworld, 'SITES must contain makerworld');
+    assert.strictEqual(SITES.makerworld.id, 'makerworld');
+
+    const { DEFAULT_SITES } = require(path.join(APP, 'main', 'finder', 'index.js'));
+    assert.ok(DEFAULT_SITES.includes('makerworld'), 'DEFAULT_SITES must include makerworld');
+
+    const rendererText = fs.readFileSync(path.join(APP, 'renderer', 'finder.js'), 'utf-8');
+    assert.ok(rendererText.includes('makerworld'), 'renderer must include makerworld');
   });
 
   // ── IPC wiring ─────────────────────────────────────────────────────────

@@ -156,32 +156,34 @@ const postJson = async (base, route, body, headers = {}) => {
     srv = await startServer();
 
     // 1. GET /api/finder/capabilities
-    await check('GET /api/finder/capabilities returns print unavailable, Printables live and three stubs that need an API key', async () => {
+    await check('GET /api/finder/capabilities returns print unavailable, MakerWorld and Printables live and three stubs that need an API key', async () => {
       const { status, body } = await getJson(srv.base, '/api/finder/capabilities');
       assert.strictEqual(status, 200);
       assert.strictEqual(body.ok, true);
       assert.strictEqual(body.print.available, false);
       assert.ok(body.print.reason);
 
-      assert.deepStrictEqual(body.sites.map((s) => s.id), ['printables', 'thingiverse', 'myminifactory', 'cults3d']);
+      assert.deepStrictEqual(body.sites.map((s) => s.id), ['makerworld', 'printables', 'thingiverse', 'myminifactory', 'cults3d']);
+      assert.strictEqual(body.sites.find((s) => s.id === 'makerworld').available, true);
+      assert.strictEqual(body.sites.find((s) => s.id === 'makerworld').reason, null);
       assert.strictEqual(body.sites.find((s) => s.id === 'printables').available, true);
       for (const id of ['thingiverse', 'myminifactory', 'cults3d']) {
         const s = body.sites.find((x) => x.id === id);
         assert.strictEqual(s.available, false, id);
         assert.strictEqual(s.reason, 'needs-key', id);
       }
-      assert.ok(!JSON.stringify(body).toLowerCase().includes('makerworld'), 'MakerWorld must not appear anywhere');
     });
 
     // 2. GET /api/finder/search?q=gridfinity
-    await check('GET /api/finder/search?q=gridfinity returns Printables items only', async () => {
+    await check('GET /api/finder/search?q=gridfinity returns MakerWorld and Printables items', async () => {
       const { status, body } = await getJson(srv.base, '/api/finder/search?q=gridfinity');
       assert.strictEqual(status, 200);
       assert.strictEqual(body.ok, true);
       assert.ok(body.items.length > 0);
 
-      assert.ok(body.items.every((i) => i.site === 'printables'), 'only printables items');
-      assert.deepStrictEqual(Object.keys(body.sites), ['printables']);
+      assert.ok(body.items.some((i) => i.site === 'makerworld'), 'has makerworld items');
+      assert.ok(body.items.some((i) => i.site === 'printables'), 'has printables items');
+      assert.deepStrictEqual(Object.keys(body.sites).sort(), ['makerworld', 'printables']);
     });
 
     // 3. GET /api/finder/search?q= (empty query)
@@ -207,6 +209,11 @@ const postJson = async (base, route, body, headers = {}) => {
       assert.strictEqual(okRes.status, 200);
       assert.strictEqual(okRes.body.ok, true);
       assert.strictEqual(okRes.body.detail.siteId, '543553');
+
+      const okMw = await getJson(srv.base, '/api/finder/detail?site=makerworld&id=1685835');
+      assert.strictEqual(okMw.status, 200);
+      assert.strictEqual(okMw.body.ok, true);
+      assert.strictEqual(okMw.body.detail.siteId, '1685835');
 
       const notFoundRes = await getJson(srv.base, '/api/finder/detail?site=printables&id=404');
       assert.strictEqual(notFoundRes.status, 404);

@@ -974,6 +974,145 @@ endsolid test_ascii`);
     }
   });
 
+
+  // ── MakerWorld tests ────────────────────────────────────────────────────────
+  await check('download: MakerWorld 3MF download saves file with safe name, .3mf extension, and source.json provenance', async () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-mw-dl-'));
+    try {
+      const finder = createFinder({
+        cacheDir: path.join(ws, '.cache'),
+        fetchImpl: createFixtureFetch(FIXTURES_DIR),
+        minIntervalMs: 0,
+        env: { BAMBU_CLOUD_TOKEN: 'valid-test-token' },
+      });
+
+      const res = await finder.download({
+        workspaceDir: ws,
+        site: 'makerworld',
+        id: '1685835',
+        fileId: '1786350',
+      });
+
+      assert.strictEqual(res.ok, true);
+      assert.ok(res.name.endsWith('.3mf'), `name must end with .3mf, got: ${res.name}`);
+      assert.strictEqual(res.kind, '3mf');
+      assert.strictEqual(res.size, 1736782);
+
+      const filePath = path.join(ws, res.path);
+      assert.ok(fs.existsSync(filePath), '3MF file must exist');
+      assert.strictEqual(fs.statSync(filePath).size, 1736782);
+
+      const sourcePath = path.join(ws, 'models', 'makerworld-1685835', 'source.json');
+      assert.ok(fs.existsSync(sourcePath), 'source.json must exist');
+      const doc = JSON.parse(fs.readFileSync(sourcePath, 'utf-8'));
+      assert.strictEqual(doc.site, 'makerworld');
+      assert.strictEqual(doc.id, '1685835');
+      assert.strictEqual(doc.title, 'Lightest Gridfinity Base Ever - Customizable');
+      assert.strictEqual(doc.author, 'Sparky');
+      assert.strictEqual(doc.files.length, 1);
+      assert.strictEqual(doc.files[0].id, '1786350');
+      assert.strictEqual(doc.files[0].name, res.name);
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  await check('security: MakerWorld token never appears in any returned object, source.json, cache file, or error message', async () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-token-sec-'));
+    const CANARY = 'CANARY_TOKEN_DO_NOT_LEAK_SECRET_BAMBU_999';
+    try {
+      const finder = createFinder({
+        cacheDir: path.join(ws, '.cache'),
+        fetchImpl: createFixtureFetch(FIXTURES_DIR),
+        minIntervalMs: 0,
+        env: { BAMBU_CLOUD_TOKEN: CANARY },
+      });
+
+      // 1. Success path
+      const res = await finder.download({
+        workspaceDir: ws,
+        site: 'makerworld',
+        id: '1685835',
+        fileId: '1786350',
+      });
+      assert.strictEqual(res.ok, true);
+
+      // Verify return object
+      const resJson = JSON.stringify(res);
+      assert.ok(!resJson.includes(CANARY), 'token must not be in download result object');
+
+      // Recursively check all files in workspace
+      function checkDir(d) {
+        for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+          const full = path.join(d, entry.name);
+          if (entry.isDirectory()) {
+            checkDir(full);
+          } else {
+            const buf = fs.readFileSync(full);
+            assert.ok(!buf.includes(Buffer.from(CANARY)), `token found in file: ${full}`);
+          }
+        }
+      }
+      checkDir(ws);
+
+      // 2. Error path (bad instance ID or 401/403)
+      const errRes = await finder.download({
+        workspaceDir: ws,
+        site: 'makerworld',
+        id: '1685835',
+        fileId: '9999999',
+      });
+      assert.strictEqual(errRes.ok, false);
+      const errJson = JSON.stringify(errRes);
+      assert.ok(!errJson.includes(CANARY), 'token must not be in error object');
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  await check('checkpoint: openInClawscad converts downloaded MakerWorld 3MF project to binary STL and opens cleanly', async () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'clawscad-mw-cp-'));
+    try {
+      const finder = createFinder({
+        cacheDir: path.join(ws, '.cache'),
+        fetchImpl: createFixtureFetch(FIXTURES_DIR),
+        minIntervalMs: 0,
+        env: { BAMBU_CLOUD_TOKEN: 'token-for-open-test' },
+      });
+
+      const dl = await finder.download({
+        workspaceDir: ws,
+        site: 'makerworld',
+        id: '1685835',
+        fileId: '1786350',
+      });
+      assert.strictEqual(dl.ok, true);
+
+      const openRes = await finder.open({
+        workspaceDir: ws,
+        site: 'makerworld',
+        id: '1685835',
+        path: dl.path,
+      });
+
+      assert.strictEqual(openRes.ok, true);
+      assert.ok(openRes.scad.endsWith('.scad'));
+      assert.ok(openRes.mesh.endsWith('.stl'));
+
+      const scadPath = path.join(ws, openRes.scad);
+      assert.ok(fs.existsSync(scadPath), '.scad checkpoint must exist');
+      const scadText = fs.readFileSync(scadPath, 'utf-8');
+      assert.ok(scadText.includes('// Imported from makerworld #1685835') || scadText.includes('// Imported from MakerWorld #1685835'));
+      assert.ok(scadText.includes('color('));
+
+      const stlPath = path.join(ws, openRes.mesh);
+      assert.ok(fs.existsSync(stlPath), 'converted STL must exist in meshes/');
+      assert.strictEqual(isBinaryStl(fs.readFileSync(stlPath)), true);
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
   console.log(`\nfinder-files: ${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })().catch((err) => {

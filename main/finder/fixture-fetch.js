@@ -58,6 +58,29 @@ function makeTinyThreeMf() {
   ]);
 }
 
+
+/** A valid 3MF with exact byte size, padded cleanly. */
+function makeThreeMfWithSize(targetSize) {
+  const model =
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>' +
+    '<object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="10" y="0" z="0"/><vertex x="0" y="10" z="0"/><vertex x="0" y="0" z="10"/></vertices>' +
+    '<triangles><triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/><triangle v1="1" v2="2" v3="3"/><triangle v1="2" v2="0" v3="3"/></triangles></mesh></object>' +
+    '</resources><build><item objectid="1"/></build></model>';
+  const padName = 'pad.bin';
+  const dummy = createZip([
+    { name: '[Content_Types].xml', data: '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>' },
+    { name: '3D/3dmodel.model', data: model },
+    { name: padName, data: Buffer.alloc(0) },
+  ], { deflate: false });
+  const needed = Math.max(0, targetSize - dummy.length);
+  return createZip([
+    { name: '[Content_Types].xml', data: '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>' },
+    { name: '3D/3dmodel.model', data: model },
+    { name: padName, data: Buffer.alloc(needed) },
+  ], { deflate: false });
+}
+
 function createFixtureFetch(dir, { calls } = {}) {
   const read = (name) => JSON.parse(fs.readFileSync(path.join(dir, name), 'utf-8').replace(/^﻿/, ''));
   const json = (obj, status = 200) =>
@@ -68,6 +91,45 @@ function createFixtureFetch(dir, { calls } = {}) {
     const u = new URL(url);
     const method = String(init.method || 'GET').toUpperCase();
     if (calls) calls.push({ method, url: String(url), body: init.body == null ? null : String(init.body) });
+
+    
+    if (u.hostname === 'api.bambulab.com') {
+      if (u.pathname.endsWith('/select/design2')) {
+        const kw = (u.searchParams.get('keyword') || '').toLowerCase();
+        if (kw.includes('fail-mw')) return json({ error: 'fixture failure' }, 500);
+        if (kw.includes('zzempty')) return json(read('makerworld-search-empty.json'));
+        const body = read('makerworld-search.json');
+        const offset = Number(u.searchParams.get('offset') || 0);
+        if (offset >= 3) return json({ ...body, hits: [] });
+        return json(body);
+      }
+      const instanceMatch = /\/design-service\/instance\/(\d+)\/f3mf/.exec(u.pathname);
+      if (instanceMatch) {
+        const auth = String((init.headers && (init.headers.Authorization || init.headers.authorization)) || '');
+        if (!auth.startsWith('Bearer ') || auth.includes('bad-token') || auth.includes('expired')) {
+          return json({ code: 1, error: 'Please log in to download models.' }, 403);
+        }
+        const instId = instanceMatch[1];
+        if (instId === '404') return json({ error: 'not found' }, 404);
+        return json({
+          name: '0.4 Nozzle - Every Size - A1 Mini.3mf',
+          url: `https://makerworld.bblmw.com/fixture/${instId}`,
+          highCompression: 0,
+        });
+      }
+      const designMatch = /\/design-service\/design\/(\d+)$/.exec(u.pathname);
+      if (designMatch) {
+        return designMatch[1] === '404' ? json({}, 404) : json(read('makerworld-design.json'));
+      }
+    }
+
+    if (u.hostname === 'makerworld.bblmw.com' && u.pathname.startsWith('/fixture/')) {
+      const id = u.pathname.split('/').pop();
+      if (id === '1786350') {
+        return bytes(makeThreeMfWithSize(1736782), 'application/vnd.ms-3mfdocument');
+      }
+      return id === '9990001' ? bytes(makeCubeStl(20), 'model/stl') : bytes(makeTinyThreeMf(), 'application/vnd.ms-3mfdocument');
+    }
 
     if (u.hostname === 'api.printables.com' && method === 'POST') {
       const payload = JSON.parse(String(init.body || '{}'));
@@ -150,4 +212,4 @@ function createFixtureFetch(dir, { calls } = {}) {
   };
 }
 
-module.exports = { createFixtureFetch, makeCubeStl, makeTinyThreeMf };
+module.exports = { createFixtureFetch, makeCubeStl, makeTinyThreeMf, makeThreeMfWithSize };

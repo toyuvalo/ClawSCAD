@@ -127,16 +127,14 @@ test.describe.serial('Find & Print, desktop', () => {
     await expect(tab).toHaveAttribute('aria-selected', 'false');
   });
 
-  test('a search shows Printables cards, and the other sources are chips that say they need an API key', async () => {
+  test('a search shows MakerWorld and Printables cards, and the other sources are chips that say they need an API key', async () => {
     await openFinder(page);
     await search(page, 'gridfinity');
     const cards = page.locator('.finder-card:not(.is-skeleton)');
-    await expect(cards).toHaveCount(3);
-    expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-site')))).toEqual(['printables', 'printables', 'printables']);
-    await expect(cards.first().locator('.finder-badge')).toHaveText('Printables');
-    await expect(cards.first().locator('.finder-card-author')).toHaveText('by Pred');
-    await expect(cards.first().locator('.finder-licence')).toHaveText('CC BY-NC');
-    await expect(page.locator('#finder-status')).toContainText('3 shown for "gridfinity"');
+    await expect(cards).toHaveCount(6);
+    expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-site')))).toEqual(['makerworld', 'printables', 'makerworld', 'printables', 'makerworld', 'printables']);
+    await expect(cards.first().locator('.finder-badge')).toHaveText('MakerWorld');
+    await expect(page.locator('#finder-status')).toContainText('6 shown for "gridfinity"');
 
     // Thingiverse, MyMiniFactory and Cults3D are stubs: visible, disabled, and they say why.
     for (const [id, label] of [['thingiverse', 'Thingiverse'], ['myminifactory', 'MyMiniFactory'], ['cults3d', 'Cults3D']]) {
@@ -145,13 +143,17 @@ test.describe.serial('Find & Print, desktop', () => {
       await expect(chip).toContainText(label);
       await expect(chip).toContainText('needs API key');
     }
-    // Printables is the only live source, so there is no "All sites" chip and it cannot be switched off.
-    await expect(page.locator('.finder-chip[data-site="all"]')).toHaveCount(0);
-    await page.locator('.finder-chip[data-site="printables"]').click();
+    // With two live sources, "All sites" chip exists.
+    await expect(page.locator('.finder-chip[data-site="all"]')).toBeVisible();
     await expect(page.locator('.finder-chip[data-site="printables"]')).toHaveAttribute('aria-pressed', 'true');
-    await expect(cards).toHaveCount(3);
-    // MakerWorld is not offered anywhere in the page
-    expect((await page.locator('#finder').innerText()).toLowerCase()).not.toContain('makerworld');
+    await expect(page.locator('.finder-chip[data-site="makerworld"]')).toHaveAttribute('aria-pressed', 'true');
+    // Clicking a chip toggles it off, clicking All sites restores both
+    await page.locator('.finder-chip[data-site="printables"]').click();
+    await expect(page.locator('.finder-chip[data-site="printables"]')).toHaveAttribute('aria-pressed', 'false');
+    await page.locator('.finder-chip[data-site="all"]').click();
+    await expect(page.locator('.finder-chip[data-site="printables"]')).toHaveAttribute('aria-pressed', 'true');
+    // MakerWorld is offered in the page
+    expect((await page.locator('#finder').innerText()).toLowerCase()).toContain('makerworld');
   });
 
   test('Show more asks for the next page and goes away when Printables is out of results', async () => {
@@ -162,13 +164,15 @@ test.describe.serial('Find & Print, desktop', () => {
     await more.click();
     await expect(more).toBeHidden();
     // nothing was lost, and nothing was added twice
-    await expect(page.locator('.finder-card:not(.is-skeleton)')).toHaveCount(3);
+    await expect(page.locator('.finder-card:not(.is-skeleton)')).toHaveCount(6);
     expect(await page.evaluate(() => window.clawscadFinder.state().results.page)).toBe(1);
   });
 
   test('Printables refusing the request is reported with a retry button, not a blank page', async () => {
     await openFinder(page);
     await search(page, 'gridfinity'); // a good state first
+    // Toggle off MakerWorld so only Printables is queried
+    await page.locator('.finder-chip[data-site="makerworld"]').click();
     await page.locator('#finder-query').fill('fail-pr gridfinity');
     await page.locator('#finder-go').click();
     const note = page.locator('.finder-note.is-error');
@@ -176,6 +180,8 @@ test.describe.serial('Find & Print, desktop', () => {
     await expect(note).toContainText('403');
     await expect(note.getByRole('button', { name: 'Try again' })).toBeVisible();
     await expect(page.locator('#finder-empty')).toContainText('No results to show');
+    // Restore all sites
+    await page.locator('.finder-chip[data-site="all"]').click();
   });
 
   test('a search with no hits says what was searched', async () => {

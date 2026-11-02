@@ -79,7 +79,9 @@ async function downloadModelFile({ adapter, http, workspaceDir, detail, fileId, 
 
   const dir = modelDir(workspaceDir, detail.site, detail.siteId);
   fs.mkdirSync(dir, { recursive: true });
-  const name = safeFileName(file.name);
+  const hasExt = /\.(stl|3mf)$/i.test(file.name);
+  const rawName = file.kind && !hasExt ? `${file.name}.${file.kind}` : file.name;
+  const name = safeFileName(rawName);
   let dest = path.join(dir, name);
   if (!isReallyInside(dir, dest)) throw new FinderError('path', 'That file name is not allowed.');
 

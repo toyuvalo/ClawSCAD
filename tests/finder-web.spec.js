@@ -108,10 +108,11 @@ test.describe.serial('Find & Print, web build', () => {
     await page.locator('#finder-query').fill('gridfinity');
     await page.keyboard.press('Enter');
     const cards = page.locator('.finder-card:not(.is-skeleton)');
-    await expect(cards).toHaveCount(3, { timeout: 15000 });
+    await expect(cards).toHaveCount(6, { timeout: 15000 });
+    await expect(page.locator('.finder-card[data-site="makerworld"]')).toHaveCount(3);
     await expect(page.locator('.finder-card[data-site="printables"]')).toHaveCount(3);
     await expect(page.locator('.finder-chip[data-site="cults3d"]')).toBeDisabled();
-    expect((await page.locator('#finder').innerText()).toLowerCase()).not.toContain('makerworld');
+    expect((await page.locator('#finder').innerText()).toLowerCase()).toContain('makerworld');
 
     await page.locator('.finder-card[data-id="printables:543553"]').click();
     await expect(page.locator('#finder-title')).toContainText('Gridfinity Storage Box by Pred');

@@ -17,6 +17,7 @@
 // Printables is the only live source. The other three are stubs that say they
 // need an API key (main/finder/adapters/key-stubs.js).
 const SITES = {
+  makerworld: { id: 'makerworld', label: 'MakerWorld' },
   printables: { id: 'printables', label: 'Printables' },
   thingiverse: { id: 'thingiverse', label: 'Thingiverse' },
   myminifactory: { id: 'myminifactory', label: 'MyMiniFactory' },
@@ -28,6 +29,7 @@ const MESH_EXTS = new Set(['stl', '3mf', 'obj']);
 
 const toInt = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Math.max(0, Math.trunc(Number(v))) : null);
 const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+const httpsUrl = (u) => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
 
 // ── text ─────────────────────────────────────────────────────────────────
 
@@ -197,6 +199,133 @@ function normalizePrintablesDetail(print) {
       text: null,
     },
     files,
+    download: { available: true },
+  };
+}
+
+
+// ── MakerWorld ───────────────────────────────────────────────────────────
+
+const MAKERWORLD_SITE = 'https://makerworld.com';
+
+function makerworldModelUrl(id, slug) {
+  return `${MAKERWORLD_SITE}/en/models/${encodeURIComponent(id)}${slug ? '-' + encodeURIComponent(slug) : ''}`;
+}
+
+function makerworldUserUrl(creator) {
+  const handle = str(creator && creator.handle);
+  return handle ? `${MAKERWORLD_SITE}/en/@${encodeURIComponent(handle)}` : null;
+}
+
+function profileScore(title) {
+  if (!title || typeof title !== 'string') return 0;
+  const t = title.toLowerCase();
+  let score = 0;
+  if (/\b(p1s|p1p|x1c?|x1-carbon|x1e)\b/i.test(t)) score += 2;
+  if (/\b0\.4(?:\s*mm)?(?:\s*nozzle)?\b/i.test(t)) score += 1;
+  return score;
+}
+
+function normalizeMakerWorldHit(hit) {
+  if (!hit || hit.id == null) return null;
+  const id = String(hit.id);
+  const lic = parseLicence(hit.license);
+  const creator = hit.designCreator || null;
+  const pictures = hit.designExtension && Array.isArray(hit.designExtension.design_pictures) ? hit.designExtension.design_pictures : [];
+  return {
+    id: `makerworld:${id}`,
+    site: 'makerworld',
+    siteId: id,
+    title: str(hit.title) || `Model ${id}`,
+    author: str(creator && creator.name),
+    authorUrl: makerworldUserUrl(creator),
+    cover: httpsUrl(hit.cover) || httpsUrl(hit.coverLandscape) || httpsUrl(hit.coverUrl) || httpsUrl(pictures[0] && pictures[0].url),
+    likes: toInt(hit.likeCount),
+    downloads: toInt(hit.downloadCount),
+    prints: toInt(hit.printCount),
+    licence: lic.label,
+    licenceName: lic.name,
+    url: makerworldModelUrl(id, str(hit.slug)),
+  };
+}
+
+function normalizeMakerWorldDetail(design) {
+  const base = normalizeMakerWorldHit({ ...design, cover: design && (design.coverUrl || design.cover) });
+  if (!base) return null;
+  const lic = parseLicence(design.license);
+  const ext = design.designExtension || {};
+  const imageList = [
+    httpsUrl(design.coverUrl),
+    ...(Array.isArray(ext.design_pictures) ? ext.design_pictures : []).map((p) => httpsUrl(p && p.url)),
+    ...(Array.isArray(ext.real_pictures) ? ext.real_pictures : []).map((p) => httpsUrl(p && p.url)),
+  ].filter(Boolean);
+  const images = [...new Set(imageList)].slice(0, 24);
+
+  const rawInstances = Array.isArray(design.instances) ? design.instances : [];
+  const sortedInstances = [...rawInstances].sort((a, b) => {
+    const scoreA = profileScore(a && a.title);
+    const scoreB = profileScore(b && b.title);
+    return scoreB - scoreA;
+  });
+
+  const files = sortedInstances.map((inst, i) => {
+    const id = String(inst.id != null ? inst.id : inst.profileId != null ? inst.profileId : i);
+    const title = str(inst.title) || `Profile ${id}`;
+    const info = (inst.extention && inst.extention.modelInfo) || {};
+    const f3mf = info.f3mf || {};
+    const size = toInt(f3mf.size) || null;
+    return {
+      id,
+      name: title,
+      size,
+      kind: '3mf',
+      group: 'instances',
+      folder: null,
+      note: null,
+      previewUrl: null,
+      printable: true,
+      downloadable: true,
+      reason: null,
+      reasonShort: null,
+    };
+  });
+
+  const plates = [];
+  for (const inst of rawInstances) {
+    const info = (inst && inst.extention && inst.extention.modelInfo) || {};
+    const compat = info.compatibility || {};
+    for (const p of Array.isArray(info.plates) ? info.plates : []) {
+      plates.push({
+        profileId: inst.profileId != null ? String(inst.profileId) : null,
+        profileTitle: str(inst.title),
+        printer: str(compat.devProductName),
+        index: toInt(p.index),
+        thumbnail: httpsUrl(p.thumbnail && p.thumbnail.url),
+        seconds: toInt(p.prediction),
+        grams: Number.isFinite(Number(p.weight)) ? Number(p.weight) : null,
+        filaments: (Array.isArray(p.filaments) ? p.filaments : []).map((fil) => ({
+          type: str(fil.type),
+          color: /^#[0-9a-f]{6}/i.test(fil.color || '') ? String(fil.color).slice(0, 7) : null,
+          grams: Number.isFinite(Number(fil.usedG)) ? Number(fil.usedG) : null,
+        })),
+      });
+    }
+  }
+
+  const info = design.licenseDescriptionInfo || {};
+  return {
+    ...base,
+    cover: images[0] || base.cover,
+    description: htmlToText(design.summary),
+    summary: null,
+    images: images.length ? images : base.cover ? [base.cover] : [],
+    tags: (Array.isArray(design.tags) ? design.tags : []).map(str).filter(Boolean),
+    category: str(design.categories && design.categories[0] && design.categories[0].name),
+    published: str(design.createTime),
+    authorAvatar: httpsUrl(design.designCreator && design.designCreator.avatar),
+    licenceInfo: { remix: lic.remix, commercial: lic.commercial, url: null, text: str(info.content) },
+    files,
+    plates,
     download: { available: true },
   };
 }
@@ -474,6 +603,10 @@ module.exports = {
   extOf,
   normalizePrintablesHit,
   normalizePrintablesDetail,
+  normalizeMakerWorldHit,
+  normalizeMakerWorldDetail,
+  makerworldModelUrl,
+  profileScore,
   normalizeThingiverseHit,
   normalizeThingiverseDetail,
   normalizeMyMiniFactoryHit,

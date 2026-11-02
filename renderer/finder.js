@@ -17,8 +17,9 @@
 //    then start. The main process re-checks all of it; this is the front half.
 //  - mountFinder never throws: a throw here would leave a tab that does nothing.
 
-const SITE_LABEL = { printables: 'Printables', thingiverse: 'Thingiverse', myminifactory: 'MyMiniFactory', cults3d: 'Cults3D' };
+const SITE_LABEL = { makerworld: 'MakerWorld', printables: 'Printables', thingiverse: 'Thingiverse', myminifactory: 'MyMiniFactory', cults3d: 'Cults3D' };
 const FALLBACK_SITES = [
+  { id: 'makerworld', label: 'MakerWorld', available: true },
   { id: 'printables', label: 'Printables', available: true },
   { id: 'thingiverse', label: 'Thingiverse', available: false, reason: 'needs-key' },
   { id: 'myminifactory', label: 'MyMiniFactory', available: false, reason: 'needs-key' },
@@ -112,7 +113,7 @@ function mount(ctx) {
   // ── state ────────────────────────────────────────────────────────────
   const saved = loadSaved();
   let sites = FALLBACK_SITES.slice();
-  let selected = new Set(saved.sites.length ? saved.sites : ['printables']);
+  let selected = new Set(saved.sites.length ? saved.sites : ['makerworld', 'printables']);
   let query = saved.query;
   let results = { query: '', page: 0, items: [], siteStatus: {}, loading: false, error: null, hasSearched: false };
   let searchSeq = 0;
@@ -189,7 +190,7 @@ function mount(ctx) {
     id: 'finder-query',
     class: 'finder-input',
     type: 'search',
-    placeholder: 'Search Printables',
+    placeholder: 'Search MakerWorld and Printables',
     'aria-label': 'Search for a model',
     autocomplete: 'off',
     enterkeyhint: 'search',
@@ -426,7 +427,7 @@ function mount(ctx) {
     introEl.textContent = '';
     introEl.append(
       h('h1', { class: 'finder-intro-title', text: 'Find a model to print' }),
-      h('p', { class: 'finder-intro-sub', text: 'Search Printables from one box. Open any model in ClawSCAD to change it, or print it on your P1S.' }),
+      h('p', { class: 'finder-intro-sub', text: 'Search MakerWorld and Printables from one box. Open any model in ClawSCAD to change it, or print it on your P1S.' }),
       h(
         'div',
         { class: 'finder-examples', role: 'group', 'aria-label': 'Example searches' },
@@ -605,7 +606,8 @@ function mount(ctx) {
       h(
         'div',
         { class: 'finder-stats' },
-        stats(src)
+        stats(src),
+        Number.isFinite(src.prints) && src.prints > 0 ? h('span', { class: 'finder-stat', title: `${whole.format(src.prints)} prints` }, icon('printer'), compact.format(src.prints)) : null
       ),
       licenceBlock(src, data)
     );
@@ -626,6 +628,7 @@ function mount(ctx) {
       if (detail.stale) detailEl.appendChild(note('warn', `${SITE_LABEL[item.site]} is not answering, so this page comes from the saved copy.`));
       if (print.open) detailEl.appendChild(printPanel());
       detailEl.appendChild(filesBlock(data));
+      if (data.plates && data.plates.length) detailEl.appendChild(platesBlock(data));
       detailEl.appendChild(aboutBlock(data));
     }
     const lastCard = gridEl.querySelector(`.finder-card[data-id="${cssEsc(item.id)}"]`);
@@ -726,6 +729,25 @@ function mount(ctx) {
       list.appendChild(row);
     }
     sec.appendChild(list);
+    return sec;
+  }
+
+
+  function platesBlock(data) {
+    const sec = h('section', { class: 'finder-section', id: 'finder-plates' }, h('h3', { class: 'finder-h3', text: 'Print profiles from the author' }));
+    const grid = h('div', { class: 'finder-plategrid' });
+    for (const p of data.plates.slice(0, 12)) {
+      const t = fmtSeconds(p.seconds);
+      grid.appendChild(
+        h(
+          'div',
+          { class: 'finder-plate' },
+          p.thumbnail ? h('img', { src: p.thumbnail, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : h('div', { class: 'finder-plate-blank' }),
+          h('div', { class: 'finder-plate-text' }, h('strong', { text: `Plate ${p.index || ''}`.trim() }), h('span', { text: [p.printer, t, p.grams != null ? `${p.grams} g` : null].filter(Boolean).join(' · ') }), h('span', { class: 'finder-dim', text: (p.filaments || []).map((f) => f.type).filter(Boolean).join(' + ') }))
+        )
+      );
+    }
+    sec.appendChild(grid);
     return sec;
   }
 

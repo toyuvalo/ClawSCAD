@@ -1,0 +1,1382 @@
+{
+ "id": 1685835,
+ "designType": 0,
+ "title": "Lightest Gridfinity Base Ever - Customizable",
+ "slug": "lightest-gridfinity-base-ever-customizable",
+ "titleTranslated": "",
+ "coverUrl": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/design/2025-08-09_110f315cb8f44.png",
+ "summary": "<p>TLDR These use half the filament and print much faster compared to normal baseplates. A 4x4 in just 14 minutes of print time! Drop down the “Open in Bambu Studio” button and click “Download STL/CAD File” to download the </p>",
+ "summaryTranslated": "",
+ "likeCount": 5328,
+ "collectionCount": 25455,
+ "shareCount": 0,
+ "printCount": 25397,
+ "commentCount": 1008,
+ "downloadCount": 37785,
+ "rawModelFileDownloadCount": 14192,
+ "readCount": 0,
+ "tags": [
+  "gridfinity",
+  "GRIDFINITY",
+  "GridFinity",
+  "Gridfinity",
+  "base",
+  "baseplate"
+ ],
+ "tagsTranslated": [
+  "gridfinity",
+  "GRIDFINITY",
+  "GridFinity",
+  "Gridfinity",
+  "base",
+  "baseplate"
+ ],
+ "designCreator": {
+  "uid": 2265111969,
+  "name": "Sparky",
+  "avatar": "https://public-cdn.bblmw.com/avatar/2265111969/2024-05-21_3beb86ea14b9f.jpg",
+  "fanCount": 1071,
+  "followCount": 0,
+  "isFollowed": false,
+  "isBlacklist": false,
+  "certificated": false,
+  "handle": "2Sparky",
+  "level": 14,
+  "gradeType": 2,
+  "canBeSubscribed": false,
+  "availableCreatorMembershipLevelCnt": 0,
+  "gotoPersonalHomepage": true,
+  "socialPreferenceMainSwitch": 1,
+  "blockUserChat": 1,
+  "blockUserCommentOrRatingOnModelOrProfile": 0,
+  "blockUserCommentOnPost": 0,
+  "blockUserMentionMe": 0
+ },
+ "designCreatorCustomization": {
+  "designHeader": "",
+  "designHeaderTranslated": "",
+  "designFooter": "",
+  "designFooterTranslated": ""
+ },
+ "categories": [
+  {
+   "id": 701,
+   "name": "Organizers",
+   "slug": "",
+   "picUrl": "",
+   "desc": "",
+   "descPic": "",
+   "bannerName": ""
+  },
+  {
+   "id": 700,
+   "name": "Tools",
+   "slug": "",
+   "picUrl": "https://public-cdn.bambulab.com/category/tools.svg",
+   "desc": "",
+   "descPic": "",
+   "bannerName": ""
+  }
+ ],
+ "modelId": "US694103168a492e",
+ "hasLike": false,
+ "hasDislike": false,
+ "hasCollect": false,
+ "instances": [
+  {
+   "id": 1786350,
+   "profileId": 376048317,
+   "profile2dId": "",
+   "status": 1,
+   "title": "0.4 Nozzle - 0.28mm layer, 3 walls, 0% infill",
+   "titleTranslated": "",
+   "summary": "",
+   "summaryTranslated": "",
+   "createTime": "2025-08-10T00:58:23Z",
+   "updateTime": "2026-10-31T04:12:52Z",
+   "extention": {
+    "modelInfo": {
+     "f3mf": {
+      "name": "",
+      "url": "",
+      "isRealLifePhoto": 0,
+      "isCompression": 0,
+      "size": 1736782
+     },
+     "auxiliaryPictures": [],
+     "auxiliaryBom": [],
+     "auxiliaryGuide": [],
+     "auxiliaryOther": [],
+     "compatibility": {
+      "devModelName": "N1",
+      "devProductName": "A1 mini",
+      "nozzleDiameter": 0.4
+     },
+     "otherCompatibility": [
+      {
+       "devModelName": "BL-P001",
+       "devProductName": "X1 Carbon",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "O1D",
+       "devProductName": "H2D",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "N2S",
+       "devProductName": "A1",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "C13",
+       "devProductName": "X1E",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "C12",
+       "devProductName": "P1S",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "C11",
+       "devProductName": "P1P",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "BL-P002",
+       "devProductName": "X1",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "O1E",
+       "devProductName": "H2D Pro",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "O1S",
+       "devProductName": "H2S",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "N7",
+       "devProductName": "P2S",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "O1C2",
+       "devProductName": "H2C",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "N6",
+       "devProductName": "X2D",
+       "nozzleDiameter": 0.4
+      },
+      {
+       "devModelName": "N9",
+       "devProductName": "A2L",
+       "nozzleDiameter": 0.4
+      }
+     ],
+     "plates": [
+      {
+       "index": 1,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_1.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_1.png"
+       },
+       "top_picture": {
+        "name": "plate_1.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_1.png"
+       },
+       "pick_picture": {
+        "name": "plate_1.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_1.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 519,
+       "weight": 2,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "0.40",
+         "usedG": "2"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 2,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_2.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_2.png"
+       },
+       "top_picture": {
+        "name": "plate_2.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_2.png"
+       },
+       "pick_picture": {
+        "name": "plate_2.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_2.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 592,
+       "weight": 3,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "0.71",
+         "usedG": "3"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 3,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_3.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_3.png"
+       },
+       "top_picture": {
+        "name": "plate_3.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_3.png"
+       },
+       "pick_picture": {
+        "name": "plate_3.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_3.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 697,
+       "weight": 3,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "1.02",
+         "usedG": "3"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 4,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_4.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_4.png"
+       },
+       "top_picture": {
+        "name": "plate_4.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_4.png"
+       },
+       "pick_picture": {
+        "name": "plate_4.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_4.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 788,
+       "weight": 4,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "1.33",
+         "usedG": "4"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 5,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_5.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_5.png"
+       },
+       "top_picture": {
+        "name": "plate_5.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_5.png"
+       },
+       "pick_picture": {
+        "name": "plate_5.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_5.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 796,
+       "weight": 4,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "1.24",
+         "usedG": "4"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 6,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_6.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_6.png"
+       },
+       "top_picture": {
+        "name": "plate_6.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_6.png"
+       },
+       "pick_picture": {
+        "name": "plate_6.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_6.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 987,
+       "weight": 6,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "1.77",
+         "usedG": "6"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 7,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_7.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_7.png"
+       },
+       "top_picture": {
+        "name": "plate_7.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_7.png"
+       },
+       "pick_picture": {
+        "name": "plate_7.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_7.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 1186,
+       "weight": 7,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "2.30",
+         "usedG": "7"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 8,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_8.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_8.png"
+       },
+       "top_picture": {
+        "name": "plate_8.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_8.png"
+       },
+       "pick_picture": {
+        "name": "plate_8.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_8.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 1559,
+       "weight": 10,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "3.28",
+         "usedG": "10"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 9,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_9.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_9.png"
+       },
+       "top_picture": {
+        "name": "plate_9.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_9.png"
+       },
+       "pick_picture": {
+        "name": "plate_9.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/plate_9.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 1950,
+       "weight": 13,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "4.25",
+         "usedG": "13"
+        }
+       ],
+       "warning": []
+      }
+     ],
+     "projectSettings": {
+      "layerHeight": "0.28",
+      "wallLoops": "3",
+      "sparseInfillDensity": "0%"
+     },
+     "hasAssemblyPic": false,
+     "hasFilamentMixed": false,
+     "nozzleTypeList": []
+    },
+    "instanceSetting": {
+     "submitAsPrivate": false,
+     "isPrinterPresetChanged": false,
+     "isPrinterTested": true,
+     "isDonateToAuthor": false,
+     "instanceCustomizedByMakerLab": false,
+     "authorsChoice": false,
+     "makerLab": "",
+     "makerLabVersion": ""
+    },
+    "extensionModelFileList": [
+     {
+      "compressType": "low_compression_glb",
+      "modelFile": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/low_compression_glb/4ebac39a-5814-4834-8e9b-1ab5eecfac2d.zip?at=1793420540&exp=1793424140&key=9114efa578133bd5fda5b785c1963b1e&uid=2265111969"
+     }
+    ],
+    "autoArrangeInfo": null,
+    "supportAutoArrange": false,
+    "supportShowModelTimeCompare": false
+   },
+   "prediction": 9074,
+   "weight": 52,
+   "instanceCreator": {
+    "uid": 2265111969,
+    "name": "Sparky",
+    "avatar": "https://public-cdn.bblmw.com/avatar/2265111969/2024-05-21_3beb86ea14b9f.jpg",
+    "fanCount": 1071,
+    "followCount": 0,
+    "isFollowed": false,
+    "isBlacklist": false,
+    "certificated": false,
+    "handle": "2Sparky",
+    "level": 14,
+    "gradeType": 2,
+    "canBeSubscribed": false,
+    "availableCreatorMembershipLevelCnt": 0,
+    "gotoPersonalHomepage": true,
+    "socialPreferenceMainSwitch": 1,
+    "blockUserChat": 1,
+    "blockUserCommentOrRatingOnModelOrProfile": 0,
+    "blockUserCommentOnPost": 0,
+    "blockUserMentionMe": 0
+   },
+   "cover": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/2025-08-09_110f315cb8f44.png",
+   "materialCnt": 1,
+   "isDefault": false,
+   "materialColorCnt": 1,
+   "needAms": false,
+   "instanceFilaments": [
+    {
+     "type": "PLA",
+     "color": "#C0C0C0",
+     "usedM": "16.30",
+     "usedG": "52"
+    }
+   ],
+   "ratingScoreTotal": 3953,
+   "ratingCount": 806,
+   "score": 0.9900805991846668,
+   "publishTime": "2025-08-10T00:58:06Z",
+   "downloadCount": 31119,
+   "printCount": 17903,
+   "isOfficial": false,
+   "appCanPrint": true,
+   "hasZipStl": true,
+   "pictures": [
+    {
+     "name": "2025-08-09_110f315cb8f44.png",
+     "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376048317/instance/2025-08-09_110f315cb8f44.png",
+     "isRealLifePhoto": 0,
+     "isCompression": 0
+    }
+   ],
+   "lacInfo": {
+    "machineName": "",
+    "processTypes": null,
+    "processModes": null,
+    "materialIds": null,
+    "plates": [],
+    "customMaterials": []
+   },
+   "lacCustomInfo": {
+    "otherTools": "",
+    "compatibleDevicesSelected": null
+   },
+   "model2DInfo": {
+    "processGroup": [],
+    "processModes": [],
+    "deviceType": {
+     "id": "",
+     "image": "",
+     "display": ""
+    },
+    "compatibleDevices": [],
+    "laserModules": [],
+    "cuttingModules": [],
+    "materials": [],
+    "customMaterials": []
+   },
+   "labelList": [
+    "good_rate",
+    "download_count"
+   ]
+  },
+  {
+   "id": 1786370,
+   "profileId": 376060187,
+   "profile2dId": "",
+   "status": 1,
+   "title": "0.8mm nozzle, FAST - 0.32mm layer, 1 walls, 0% infill",
+   "titleTranslated": "",
+   "summary": "",
+   "summaryTranslated": "",
+   "createTime": "2025-08-10T01:06:58Z",
+   "updateTime": "2026-10-31T04:07:25Z",
+   "extention": {
+    "modelInfo": {
+     "f3mf": {
+      "name": "",
+      "url": "",
+      "isRealLifePhoto": 0,
+      "isCompression": 0,
+      "size": 1736835
+     },
+     "auxiliaryPictures": [],
+     "auxiliaryBom": [],
+     "auxiliaryGuide": [],
+     "auxiliaryOther": [],
+     "compatibility": {
+      "devModelName": "N1",
+      "devProductName": "A1 mini",
+      "nozzleDiameter": 0.8
+     },
+     "otherCompatibility": [
+      {
+       "devModelName": "O1D",
+       "devProductName": "H2D",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "N2S",
+       "devProductName": "A1",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "C12",
+       "devProductName": "P1S",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "C13",
+       "devProductName": "X1E",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "C11",
+       "devProductName": "P1P",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "BL-P001",
+       "devProductName": "X1 Carbon",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "BL-P002",
+       "devProductName": "X1",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "O1E",
+       "devProductName": "H2D Pro",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "O1S",
+       "devProductName": "H2S",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "N7",
+       "devProductName": "P2S",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "O1C2",
+       "devProductName": "H2C",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "N6",
+       "devProductName": "X2D",
+       "nozzleDiameter": 0.8
+      },
+      {
+       "devModelName": "N9",
+       "devProductName": "A2L",
+       "nozzleDiameter": 0.8
+      }
+     ],
+     "plates": [
+      {
+       "index": 1,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_1.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_1.png"
+       },
+       "top_picture": {
+        "name": "plate_1.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_1.png"
+       },
+       "pick_picture": {
+        "name": "plate_1.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_1.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 488,
+       "weight": 2,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "0.40",
+         "usedG": "2"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 2,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_2.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_2.png"
+       },
+       "top_picture": {
+        "name": "plate_2.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_2.png"
+       },
+       "pick_picture": {
+        "name": "plate_2.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_2.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 530,
+       "weight": 3,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "0.71",
+         "usedG": "3"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 3,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_3.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_3.png"
+       },
+       "top_picture": {
+        "name": "plate_3.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_3.png"
+       },
+       "pick_picture": {
+        "name": "plate_3.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_3.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 600,
+       "weight": 3,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "1.02",
+         "usedG": "3"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 4,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_4.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_4.png"
+       },
+       "top_picture": {
+        "name": "plate_4.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_4.png"
+       },
+       "pick_picture": {
+        "name": "plate_4.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_4.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 668,
+       "weight": 4,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "1.33",
+         "usedG": "4"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 5,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_5.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_5.png"
+       },
+       "top_picture": {
+        "name": "plate_5.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_5.png"
+       },
+       "pick_picture": {
+        "name": "plate_5.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_5.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 641,
+       "weight": 4,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "1.25",
+         "usedG": "4"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 6,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_6.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_6.png"
+       },
+       "top_picture": {
+        "name": "plate_6.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_6.png"
+       },
+       "pick_picture": {
+        "name": "plate_6.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_6.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 749,
+       "weight": 6,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "1.78",
+         "usedG": "6"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 7,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_7.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_7.png"
+       },
+       "top_picture": {
+        "name": "plate_7.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_7.png"
+       },
+       "pick_picture": {
+        "name": "plate_7.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_7.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 850,
+       "weight": 7,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "2.31",
+         "usedG": "7"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 8,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_8.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_8.png"
+       },
+       "top_picture": {
+        "name": "plate_8.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_8.png"
+       },
+       "pick_picture": {
+        "name": "plate_8.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_8.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 1044,
+       "weight": 10,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "3.29",
+         "usedG": "10"
+        }
+       ],
+       "warning": []
+      },
+      {
+       "index": 9,
+       "name": "",
+       "thumbnail": {
+        "name": "plate_9.png",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_9.png"
+       },
+       "top_picture": {
+        "name": "plate_9.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_9.png"
+       },
+       "pick_picture": {
+        "name": "plate_9.png",
+        "dir": "",
+        "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/plate_9.png"
+       },
+       "objects": [],
+       "skipped_objects": [],
+       "label_object_enabled": false,
+       "prediction": 1240,
+       "weight": 13,
+       "filaments": [
+        {
+         "id": "1",
+         "type": "PLA",
+         "color": "#C0C0C0",
+         "usedM": "4.27",
+         "usedG": "13"
+        }
+       ],
+       "warning": []
+      }
+     ],
+     "projectSettings": {
+      "layerHeight": "0.32",
+      "wallLoops": "1",
+      "sparseInfillDensity": "0%"
+     },
+     "hasAssemblyPic": false,
+     "hasFilamentMixed": false,
+     "nozzleTypeList": []
+    },
+    "instanceSetting": {
+     "submitAsPrivate": false,
+     "isPrinterPresetChanged": false,
+     "isPrinterTested": true,
+     "isDonateToAuthor": false,
+     "instanceCustomizedByMakerLab": false,
+     "authorsChoice": false,
+     "makerLab": "",
+     "makerLabVersion": ""
+    },
+    "extensionModelFileList": [
+     {
+      "compressType": "low_compression_glb",
+      "modelFile": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/low_compression_glb/054c0b4e-7cbf-4bf0-b760-843d68794a20.zip?at=1793420540&exp=1793424140&key=9114efa578133bd5fda5b785c1963b1e&uid=2265111969"
+     }
+    ],
+    "autoArrangeInfo": null,
+    "supportAutoArrange": false,
+    "supportShowModelTimeCompare": false
+   },
+   "prediction": 6810,
+   "weight": 52,
+   "instanceCreator": {
+    "uid": 2265111969,
+    "name": "Sparky",
+    "avatar": "https://public-cdn.bblmw.com/avatar/2265111969/2024-05-21_3beb86ea14b9f.jpg",
+    "fanCount": 1071,
+    "followCount": 0,
+    "isFollowed": false,
+    "isBlacklist": false,
+    "certificated": false,
+    "handle": "2Sparky",
+    "level": 14,
+    "gradeType": 2,
+    "canBeSubscribed": false,
+    "availableCreatorMembershipLevelCnt": 0,
+    "gotoPersonalHomepage": true,
+    "socialPreferenceMainSwitch": 1,
+    "blockUserChat": 1,
+    "blockUserCommentOrRatingOnModelOrProfile": 0,
+    "blockUserCommentOnPost": 0,
+    "blockUserMentionMe": 0
+   },
+   "cover": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/2025-08-09_0c5a26bb5bf58.png",
+   "materialCnt": 1,
+   "isDefault": false,
+   "materialColorCnt": 1,
+   "needAms": false,
+   "instanceFilaments": [
+    {
+     "type": "PLA",
+     "color": "#C0C0C0",
+     "usedM": "16.36",
+     "usedG": "52"
+    }
+   ],
+   "ratingScoreTotal": 179,
+   "ratingCount": 36,
+   "score": 0.9635009553586938,
+   "publishTime": "2025-08-10T01:22:22Z",
+   "downloadCount": 1384,
+   "printCount": 669,
+   "isOfficial": false,
+   "appCanPrint": true,
+   "hasZipStl": true,
+   "pictures": [
+    {
+     "name": "Gridfinity lightest possible base.png",
+     "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/376060187/instance/2025-08-09_0c5a26bb5bf58.png",
+     "isRealLifePhoto": 0,
+     "isCompression": 0
+    }
+   ],
+   "lacInfo": {
+    "machineName": "",
+    "processTypes": null,
+    "processModes": null,
+    "materialIds": null,
+    "plates": [],
+    "customMaterials": []
+   },
+   "lacCustomInfo": {
+    "otherTools": "",
+    "compatibleDevicesSelected": null
+   },
+   "model2DInfo": {
+    "processGroup": [],
+    "processModes": [],
+    "deviceType": {
+     "id": "",
+     "image": "",
+     "display": ""
+    },
+    "compatibleDevices": [],
+    "laserModules": [],
+    "cuttingModules": [],
+    "materials": [],
+    "customMaterials": []
+   },
+   "labelList": null
+  }
+ ],
+ "license": "Standard Digital File License",
+ "allowReCreation": false,
+ "nsfw": false,
+ "originals": [],
+ "createTime": "2025-08-10T00:58:05Z",
+ "updateTime": "2026-10-31T04:15:13Z",
+ "modelSource": 1,
+ "designExtension": {
+  "design_setting": {
+   "allowOthersProfile": false,
+   "submitAsPrivate": false,
+   "designUpdateMsg": {
+    "noticeInstanceAuthor": false,
+    "noticeDownloadUser": false,
+    "content": "",
+    "images": null
+   },
+   "makerLab": "",
+   "makerLabVersion": ""
+  },
+  "design_video": [],
+  "real_pictures": [],
+  "design_pictures": [
+   {
+    "name": "bottom.png",
+    "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/design/2025-08-09_605e1fa90a4e5.png",
+    "isRealLifePhoto": 0,
+    "isCompression": 0,
+    "size": 0
+   },
+   {
+    "name": "closer look.png",
+    "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/design/2025-08-09_652b997d74b918.png",
+    "isRealLifePhoto": 0,
+    "isCompression": 0,
+    "size": 0
+   },
+   {
+    "name": "warning.png",
+    "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/design/2025-08-09_1a458c3ae83ab8.png",
+    "isRealLifePhoto": 0,
+    "isCompression": 0,
+    "size": 0
+   },
+   {
+    "name": "get premade.png",
+    "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/design/2025-08-09_9a041e2c5520a8.png",
+    "isRealLifePhoto": 0,
+    "isCompression": 0,
+    "size": 0
+   },
+   {
+    "name": "With stuff.png",
+    "url": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/design/2025-08-09_2a1f0f30f4d8a.png",
+    "isRealLifePhoto": 0,
+    "isCompression": 0,
+    "size": 0
+   }
+  ],
+  "design_bom": [],
+  "design_guide": [],
+  "design_other": [],
+  "model_files": [
+   {
+    "thumbnailName": "1x1.jpeg",
+    "thumbnailSize": 0,
+    "thumbnailUrl": "",
+    "modelName": "1x1.3mf",
+    "modelSize": 18268,
+    "modelUrl": "",
+    "modelType": "3mf",
+    "modelUpdateTime": "2025-08-09T23:05:05.647Z",
+    "modelFileName": "",
+    "scadStatus": 0,
+    "scadConfig": "",
+    "fusionF3D": {
+     "status": "",
+     "parameters": "",
+     "parametersUrl": "",
+     "f3DUrn": "",
+     "fusionId": ""
+    },
+    "note": "",
+    "isDir": false,
+    "dirName": "",
+    "isAutoGenerated": false,
+    "protected": false,
+    "unikey": "73391fc6-0887-4e2e-aade-82212d120cb2",
+    "children": [],
+    "projectSettings": {
+     "layerHeight": "",
+     "wallLoops": "",
+     "sparseInfillDensity": ""
+    },
+    "hasAssemblyPic": false
+   },
+   {
+    "thumbnailName": "1x2.jpeg",
+    "thumbnailSize": 0,
+    "thumbnailUrl": "",
+    "modelName": "1x2.3mf",
+    "modelSize": 24443,
+    "modelUrl": "",
+    "modelType": "3mf",
+    "modelUpdateTime": "2025-08-09T23:05:05.647Z",
+    "modelFileName": "",
+    "scadStatus": 0,
+    "scadConfig": "",
+    "fusionF3D": {
+     "status": "",
+     "parameters": "",
+     "parametersUrl": "",
+     "f3DUrn": "",
+     "fusionId": ""
+    },
+    "note": "",
+    "isDir": false,
+    "dirName": "",
+    "isAutoGenerated": false,
+    "protected": false,
+    "unikey": "981185af-6a83-4313-80a9-b892b07da91e",
+    "children": [],
+    "projectSettings": {
+     "layerHeight": "",
+     "wallLoops": "",
+     "sparseInfillDensity": ""
+    },
+    "hasAssemblyPic": false
+   },
+   {
+    "thumbnailName": "1x3.jpeg",
+    "thumbnailSize": 0,
+    "thumbnailUrl": "",
+    "modelName": "1x3.3mf",
+    "modelSize": 28929,
+    "modelUrl": "",
+    "modelType": "3mf",
+    "modelUpdateTime": "2025-08-09T23:05:05.647Z",
+    "modelFileName": "",
+    "scadStatus": 0,
+    "scadConfig": "",
+    "fusionF3D": {
+     "status": "",
+     "parameters": "",
+     "parametersUrl": "",
+     "f3DUrn": "",
+     "fusionId": ""
+    },
+    "note": "",
+    "isDir": false,
+    "dirName": "",
+    "isAutoGenerated": false,
+    "protected": false,
+    "unikey": "3e6eddc7-e4cf-42af-af92-e7d9e0235346",
+    "children": [],
+    "projectSettings": {
+     "layerHeight": "",
+     "wallLoops": "",
+     "sparseInfillDensity": ""
+    },
+    "hasAssemblyPic": false
+   },
+   {
+    "thumbnailName": "1x4.jpeg",
+    "thumbnailSize": 0,
+    "thumbnailUrl": "",
+    "modelName": "1x4.3mf",
+    "modelSize": 32342,
+    "modelUrl": "",
+    "modelType": "3mf",
+    "modelUpdateTime": "2025-08-09T23:05:05.647Z",
+    "modelFileName": "",
+    "scadStatus": 0,
+    "scadConfig": "",
+    "fusionF3D": {
+     "status": "",
+     "parameters": "",
+     "parametersUrl": "",
+     "f3DUrn": "",
+     "fusionId": ""
+    },
+    "note": "",
+    "isDir": false,
+    "dirName": "",
+    "isAutoGenerated": false,
+    "protected": false,
+    "unikey": "2e9c165a-7376-4dbe-a92c-13a0c3d96461",
+    "children": [],
+    "projectSettings": {
+     "layerHeight": "",
+     "wallLoops": "",
+     "sparseInfillDensity": ""
+    },
+    "hasAssemblyPic": false
+   }
+  ],
+  "instances_order": null,
+  "boms_needed": false,
+  "boms": [],
+  "boms_of_filaments": [],
+  "boms_of_materials": [],
+  "boms_v2": [],
+  "boms_of_filaments_v2": [],
+  "boms_of_materials_v2": [],
+  "boms_of_other_parts": "",
+  "boms_of_other_part_list": [],
+  "boms_links": [],
+  "preset": {
+   "type": "",
+   "filamentConfig": null,
+   "printerConfig": null,
+   "processConfig": null,
+   "printerSettings": [],
+   "file": {
+    "name": "",
+    "size": 0,
+    "url": ""
+   }
+  },
+  "bomsRegion": {
+   "name": "CA",
+   "icon": "https://makerworld.bblmw.com/makerworld/product/public/ca.png",
+   "link": "https://ca.store.bambulab.com/?skr=yes",
+   "countries": [
+    "Canada"
+   ]
+  }
+ },
+ "status": 1,
+ "defaultInstanceId": 1786350,
+ "isStaffPicked": false,
+ "pickReason": "",
+ "isPrintable": true,
+ "isOfficial": false,
+ "isPointRedeemable": false,
+ "pointRedeemDetail": {
+  "price": 0,
+  "sku": "",
+  "status": 0
+ },
+ "isAlreadyRedeemed": false,
+ "isExclusive": true,
+ "designCustomizeCount": 85249,
+ "customizedByMakerLab": true,
+ "contest": {
+  "contestId": 0,
+  "rank": 0,
+  "status": 0,
+  "contestName": "",
+  "contestStatus": 0,
+  "comment": "",
+  "modelPrintIcon": null,
+  "allowedLicense": null
+ },
+ "categoryByMakerLab": "",
+ "preset": {
+  "type": "",
+  "filamentConfig": null,
+  "printerConfig": null,
+  "processConfig": null,
+  "printerSettings": [],
+  "file": {
+   "name": "",
+   "size": 0,
+   "url": ""
+  }
+ },
+ "coverLandscape": "",
+ "coverPortrait": "https://makerworld.bblmw.com/makerworld/model/US694103168a492e/design/2025-08-09_acc40bc69ad678.png",
+ "cyberBrickNeeded": false,
+ "isFeaturedBoms": false,
+ "isFeaturedCyberBrick": false,
+ "paidSetting": {
+  "isPaid": false,
+  "crowdfunding": 0
+ },
+ "hasBacked": false,
+ "isAIGC": false,
+ "licenseDescriptionInfo": {
+  "title": "This user content is licensed under a Standard Digital File License.",
+  "content": "You shall not share, sub-license, sell, rent, host, transfer, or distribute in any way the digital or 3D printed versions of this object, nor any other derivative work of this object in its digital or physical format (including - but not limited to - remixes of this object, and hosting on other digital platforms). The objects may not be used without permission in any way whatsoever in which you charge money, or collect fees."
+ }
+}
