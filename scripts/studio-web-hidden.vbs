@@ -20,7 +20,10 @@ Set fso   = CreateObject("Scripting.FileSystemObject")
 here = fso.GetParentFolderName(WScript.ScriptFullName)
 root = fso.GetParentFolderName(here)
 
-nodeExe = shell.ExpandEnvironmentStrings("%ProgramFiles%\nodejs\node.exe")
+' Prefer the Node 22 junction (G:\dev-tools\node-22 -> v22.23.4, CVE-2026-111497 fix);
+' fall back to the MSI Node, then PATH.
+nodeExe = "G:\dev-tools\node-22\node.exe"
+If Not fso.FileExists(nodeExe) Then nodeExe = shell.ExpandEnvironmentStrings("%ProgramFiles%\nodejs\node.exe")
 If Not fso.FileExists(nodeExe) Then nodeExe = "node.exe"
 
 shell.CurrentDirectory = root
