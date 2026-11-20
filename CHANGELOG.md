@@ -5,6 +5,43 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.9.0] - 2026-11-19
+
+### Added
+
+- **Live build chat.** A build no longer shows only "Building…" for up to ten minutes. The
+  headless build now runs `claude -p --output-format stream-json --verbose`, and
+  `main/build-stream.js` turns each event into a chat item and a progress phase. A panel at the
+  bottom right (`renderer/build-chat.js`, `style-build-chat.css`) shows a progress bar (phase,
+  iteration count, steps, elapsed time), each comment Claude makes, each step it takes (reading,
+  writing the `.scad`, measuring with OpenSCAD with the measured size, rendering), the preview
+  renders it looks at, its plan checklist, and a card for each checkpoint it made.
+- **Reply, answer and pick options.** Claude ends each turn with `OPTIONS: a | b | c`, shown as
+  buttons; a real question goes on a `QUESTION:` line. A reply runs
+  `claude -p <reply> --resume <session_id>`, so Claude keeps its context and the iteration
+  count keeps going. New routes: `GET /api/make/session`, `POST /api/make/reply`,
+  `POST /api/make/new`; new SSE channels `make:chat` and `make:progress`. Each session is
+  saved to `<state>/build-sessions/`, so a reload or a second device sees the whole chat.
+- **Builds can check their own work.** The build allows the OpenSCAD MCP render/export tools
+  and `openscad` in Bash, with `OPENSCAD_BINARY` and `PATH` set to the app's OpenSCAD.
+  `AskUserQuestion` is disabled (nobody can answer it headless).
+- **The desktop app links to the Studio server** (`main/studio-link.js`,
+  `renderer/studio-link.js`). When the server at `CLAWSCAD_STUDIO_URL` (default
+  `http://127.0.0.1:8730`; `off` disables) serves the same workspace, Make it runs there, so
+  the web app and a phone can follow and continue the same build. The desktop shows the same
+  build chat, plus **Open in terminal**, which resumes the build's Claude session in the
+  desktop terminal for full control. CORS headers are added inside Electron's session only;
+  the server itself still sends none. A window on a different workspace shows neither the
+  chat nor Customize, and its Make it goes to its own terminal as before.
+- **Customize in the desktop app**: the web app's view, the same code (`web/customize.js`),
+  rendered by the server. Its styles moved from `web/web.css` to `style-customize.css`.
+
+### Changed
+
+- A failed build's reason is Claude's own error text from the stream-json result, not the last
+  raw line.
+- The Workbench's Ask Claude log now shows the chat's plain lines (stdout is JSON now).
+
 ## [0.8.3] - 2026-11-02
 
 ### Fixed

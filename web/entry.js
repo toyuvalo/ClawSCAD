@@ -25,6 +25,7 @@ import { mountStudio } from '../renderer/studio.js';
 import { mountFinder } from '../renderer/finder.js';
 import { createApiShim } from './api-shim.js';
 import { mountCustomize } from './customize.js';
+import { mountBuildChat } from '../renderer/build-chat.js';
 import { mountWorkbench } from './workbench.js';
 
 // ── toasts ────────────────────────────────────────────────────────────────
@@ -288,6 +289,7 @@ ctx.els = {
 
 let customize = null;
 let workbench = null;
+let buildChat = null;
 
 // A tab opened (or reloaded) mid-build missed the 'start' event, so ask once.
 // Without this its Make it button stays live and the click is refused (409).
@@ -307,7 +309,7 @@ api.onMakeEvent((evt) => {
     if (handled) return;
   }
   if (evt.event === 'start') {
-    showToast('Claude is building your model — this usually takes a minute.', 'info');
+    showToast('Claude is building your model — follow along in the chat, bottom right.', 'info');
     document.body.classList.add('is-making');
   }
   if (evt.event === 'timeout') {
@@ -341,6 +343,16 @@ api.onMakeEvent((evt) => {
 api.onMakeLog((text) => {
   if (workbench) workbench.onMakeLog(text);
   String(text).split('\n').filter(Boolean).forEach((line) => console.log('[claude]', line));
+});
+
+// v0.9: stdout is stream-json now, so the Workbench's Ask Claude log gets the
+// chat's plain lines instead of raw JSON: the same words the chat panel shows.
+api.onMakeChat((msg) => {
+  const item = msg && msg.item;
+  if (!workbench || !item) return;
+  if (item.kind === 'assistant' && item.text) workbench.onMakeLog(`${item.text}\n`);
+  else if (item.kind === 'step') workbench.onMakeLog(`› ${item.text}\n`);
+  else if (item.kind === 'error') workbench.onMakeLog(`✕ ${item.text}\n`);
 });
 
 /** The one place the three views are switched, so their [hidden] and the
@@ -413,6 +425,19 @@ api
     } catch (err) {
       console.error('[web] mountWorkbench threw', err);
     }
+    // v0.9 build chat: what Claude is doing, live. Its own try, same reason.
+    try {
+      buildChat = mountBuildChat({
+        api,
+        onOpenFile: (file) => {
+          showView('workbench');
+          if (workbench) workbench.refresh().then(() => workbench.select(file, null)).catch(() => {});
+        },
+      });
+    } catch (err) {
+      console.error('[web] mountBuildChat threw', err);
+    }
+    api.hasBuildChat = Boolean(buildChat);
     // v0.8 Find & Print. Its own try, for the same reason as the two above. It
     // builds its own tab and view root (web/index.html is not edited, so a
     // server still running an older bundle never shows a dead tab), and it
@@ -443,5 +468,5 @@ api
 // `ctx` lives inside the esbuild bundle's module scope and page.evaluate cannot
 // reach it. No product code path goes through this alias.
 try {
-  window.clawscadWeb = { ctx, api, startImageGeneration };
+  window.clawscadWeb = { ctx, api, startImageGeneration, buildChat: () => buildChat };
 } catch {}
