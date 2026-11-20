@@ -64,6 +64,8 @@ export function createApiShim(opts = {}) {
   const exitSubs = [];
   const makeSubs = [];
   const makeLogSubs = [];
+  const makeChatSubs = [];
+  const makeProgressSubs = [];
   const renderSubs = [];
 
   // Results of a picker choice, keyed by the token uploadPick() hands back. The
@@ -161,6 +163,17 @@ export function createApiShim(opts = {}) {
 
     cancelMake: () => json('/api/make/cancel', { method: 'POST' }),
     makeStatus: () => json('/api/make/status'),
+    // v0.9 build chat: the whole session, a reply that resumes it, a fresh start.
+    makeSession: (id) => json(`/api/make/session${id ? `?id=${encodeURIComponent(id)}` : ''}`),
+    makeReply: (text) =>
+      json('/api/make/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: String(text == null ? '' : text) }),
+      }).then((r) => (r && r.ok ? r : { ok: false, ...(r || {}), reason: describeSendFailure(r).reason })),
+    makeNew: () => json('/api/make/new', { method: 'POST' }),
+    /** The server this shim talks to; '' = same origin. Customize builds image and download URLs from it. */
+    base,
 
     // ── models: customize + export ────────────────────────────────────────
     listModels: () => json('/api/models'),
@@ -398,6 +411,12 @@ export function createApiShim(opts = {}) {
     onMakeLog: (cb) => {
       if (typeof cb === 'function') makeLogSubs.push(cb);
     },
+    onMakeChat: (cb) => {
+      if (typeof cb === 'function') makeChatSubs.push(cb);
+    },
+    onMakeProgress: (cb) => {
+      if (typeof cb === 'function') makeProgressSubs.push(cb);
+    },
   };
 
   /**
@@ -426,6 +445,10 @@ export function createApiShim(opts = {}) {
                 ? makeSubs
                 : envelope.channel === 'make:log'
                   ? makeLogSubs
+                  : envelope.channel === 'make:chat'
+                    ? makeChatSubs
+                    : envelope.channel === 'make:progress'
+                      ? makeProgressSubs
                   : envelope.channel === 'render:event'
                     ? renderSubs
                     : null;

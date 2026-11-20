@@ -28,6 +28,9 @@ export function mountCustomize(ctx, api, showToast) {
   let previewTimer = null;
   let previewSeq = 0;
   let busy = false;
+  // '' in the browser (same origin). The desktop app passes the linked studio
+  // server's URL, so image and download links point there.
+  const apiBase = (api && typeof api.base === 'string' ? api.base : '').replace(/\/+$/, '');
 
   // ── DOM ────────────────────────────────────────────────────────────────
   root.innerHTML = '';
@@ -279,7 +282,7 @@ export function mountCustomize(ctx, api, showToast) {
         previewImg.removeAttribute('src');
         return;
       }
-      previewImg.src = `/api/pipeline/image?path=${encodeURIComponent(out.path)}&t=${Date.now()}`;
+      previewImg.src = `${apiBase}/api/pipeline/image?path=${encodeURIComponent(out.path)}&t=${Date.now()}`;
       previewNote.textContent = out.warnings ? `Rendered, with warnings: ${out.warnings.slice(0, 160)}` : '';
     } catch (err) {
       if (seq !== previewSeq) return;
@@ -299,12 +302,19 @@ export function mountCustomize(ctx, api, showToast) {
       }
       // A real navigation to the download endpoint: the browser gets
       // Content-Disposition: attachment and saves it, no blob juggling.
-      const a = document.createElement('a');
-      a.href = `/api/model/download?path=${encodeURIComponent(out.path)}`;
-      a.download = '';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      const href = `${apiBase}/api/model/download?path=${encodeURIComponent(out.path)}`;
+      if (typeof api.download === 'function') {
+        // The desktop app: a cross-origin <a download> would navigate the
+        // window away, so the main process saves it through a dialog instead.
+        await api.download(href);
+      } else {
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
       setBusy(false, `${format.toUpperCase()} ready — ${(out.bytes / 1024).toFixed(0)} KB`);
       showToast(`${format.toUpperCase()} downloaded`, 'success');
     } catch (err) {

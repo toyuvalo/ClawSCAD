@@ -1619,6 +1619,8 @@ ipcMain.handle('pipeline:read-image', (event, filePath) => {
   require('./main/tools.js').register(ipcMain, deps);
   // v0.8 Find & Print. Behaviour lives in main/finder/ (shared with web/server.js).
   require('./main/model-finder.js').register(ipcMain, deps);
+  // v0.9 the link to the Studio server: live build chat, Customize, shared builds.
+  require('./main/studio-link.js').register(ipcMain, { app, session: require('electron').session });
 }
 
 ipcMain.handle('app:get-version', () => APP_VERSION);

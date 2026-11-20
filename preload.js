@@ -51,6 +51,9 @@ contextBridge.exposeInMainWorld('api', {
   // Checkpoints
   getCheckpoints: () => ipcRenderer.invoke('checkpoint:list'),
   selectCheckpoint: (id) => ipcRenderer.invoke('checkpoint:select', id),
+  // v0.9 link to the Studio server (main/studio-link.js)
+  linkInfo: () => ipcRenderer.invoke('link:info'),
+  linkDownload: (url) => ipcRenderer.invoke('link:download', url),
   deleteCheckpoint: (id, opts) => ipcRenderer.invoke('checkpoint:delete', id, opts || {}),
   renameCheckpoint: (id, label) => ipcRenderer.invoke('checkpoint:rename', id, label),
   restoreCheckpointSession: (id) => ipcRenderer.invoke('checkpoint:restore-session', id),

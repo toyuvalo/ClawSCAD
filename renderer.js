@@ -3600,7 +3600,18 @@ import { mountConfirmGate } from './renderer/confirm-gate.js';
 import { mountGuided } from './renderer/categories-ui.js';
 import { mountStudio } from './renderer/studio.js';
 import { mountFinder } from './renderer/finder.js';
+import { mountStudioLink } from './renderer/studio-link.js';
 mountComposer(ctx); mountUploads(ctx); mountPresets(ctx); mountGallery(ctx); mountOnboarding(ctx);
+
+// ── v0.9 the link to the Studio server ──────────────────────────────────
+// Mounts BEFORE the studio on purpose: it wraps ctx.api so Make it can run on
+// the server (where the web app sees it too), and studio.js reads ctx.api once
+// at mount. Its own try, like every mount here.
+try {
+  ctx.link = mountStudioLink(ctx);
+} catch (err) {
+  console.error('[renderer] mountStudioLink threw', err);
+}
 
 // ── v0.4 guided make (docs/v04-guided-make-contracts.md) ────────────────
 // Order matters and is fixed: the confirm gate publishes ctx.confirm, and the

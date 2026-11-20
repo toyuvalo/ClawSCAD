@@ -1085,7 +1085,12 @@ export function mountStudio(ctx) {
 
     clearNotice('claude');
     clearNotice('submit');
-    toast('Sent to Claude — watch it work in the Workbench.', 'success');
+    toast(
+      api && api.hasBuildChat
+        ? 'Claude is on it — follow along in the chat, bottom right.'
+        : 'Sent to Claude — watch it work in the Workbench.',
+      'success'
+    );
     showView('workbench');
     return true;
   }

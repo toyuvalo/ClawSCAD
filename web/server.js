@@ -36,6 +36,7 @@ const { loadCategories } = require('../main/categories.js');
 const { mergeState } = require('../main/composer.js');
 const { _internal: uploadInternals } = require('../main/uploads.js');
 const { createFinderFromEnv } = require('../main/finder/index.js');
+const { createBuildParser, BUILD_SYSTEM_PROMPT } = require('../main/build-stream.js');
 
 // scad-params.js is an ES module because the BROWSER bundle imports it too —
 // one parser, not a server copy and a client copy that drift. This server is
@@ -129,6 +130,8 @@ const STATIC = new Map([
   ['/style.css', { file: path.join(APP_ROOT, 'style.css'), type: 'text/css; charset=utf-8' }],
   ['/style-studio.css', { file: path.join(APP_ROOT, 'style-studio.css'), type: 'text/css; charset=utf-8' }],
   ['/style-finder.css', { file: path.join(APP_ROOT, 'style-finder.css'), type: 'text/css; charset=utf-8' }],
+  ['/style-customize.css', { file: path.join(APP_ROOT, 'style-customize.css'), type: 'text/css; charset=utf-8' }],
+  ['/style-build-chat.css', { file: path.join(APP_ROOT, 'style-build-chat.css'), type: 'text/css; charset=utf-8' }],
   ['/web.css', { file: path.join(WEB_ROOT, 'web.css'), type: 'text/css; charset=utf-8' }],
   ['/favicon.ico', { file: path.join(APP_ROOT, 'icon.png'), type: 'image/png' }],
 ]);
@@ -743,11 +746,128 @@ function makeFailureReason(code, file, tail) {
   return lines.length ? lines[lines.length - 1].slice(0, 300) : null;
 }
 
-function startMake({ brief } = {}) {
-  if (makeChild) return { error: 'already-running', startedAt: makeStartedAt };
-  const text = typeof brief === 'string' ? brief.trim() : '';
-  if (!text) return { error: 'no-brief' };
+// ── build sessions: the chat the user watches ─────────────────────────────
+//
+// v0.9: the build streams. `--output-format stream-json --verbose` emits one
+// JSON object per step; main/build-stream.js turns those into chat items and
+// a progress phase, which go out on `make:chat` and `make:progress`. The whole
+// conversation is kept as a SESSION so a tab opened mid-build, a reload, or
+// the desktop app can show it from the start — and a reply can continue it
+// (`claude -p <reply> --resume <session_id>`), which is how the user answers
+// a question or picks one of Claude's options.
 
+const SESSIONS_DIR = path.join(STATE_DIR, 'build-sessions');
+const MAX_SESSION_ITEMS = 400;
+let buildSession = loadLatestSession();
+let sessionSaveTimer = null;
+
+function loadLatestSession() {
+  try {
+    const s = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, 'latest.json'), 'utf-8'));
+    // A server restart killed whatever was running; say so rather than show a
+    // build that spins forever.
+    if (s && s.status === 'running') {
+      s.status = 'failed';
+      s.progress = { ...(s.progress || {}), phase: 'failed', label: 'Stopped: the studio server restarted', pct: 100 };
+    }
+    return s && typeof s === 'object' ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(now) {
+  if (!buildSession) return;
+  const write = () => {
+    sessionSaveTimer = null;
+    if (!buildSession) return;
+    try {
+      fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+      const body = JSON.stringify(buildSession);
+      fs.writeFileSync(path.join(SESSIONS_DIR, 'latest.json'), body);
+      fs.writeFileSync(path.join(SESSIONS_DIR, `${buildSession.id}.json`), body);
+    } catch (err) {
+      console.warn('[web] could not save the build session:', err.message);
+    }
+  };
+  if (now) {
+    if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
+    return write();
+  }
+  if (!sessionSaveTimer) sessionSaveTimer = setTimeout(write, 1500);
+}
+
+function sessionSummary(s) {
+  if (!s) return null;
+  const { parserState, cancelled, ...rest } = s;
+  return rest;
+}
+
+function pushItem(item) {
+  if (!buildSession) return;
+  if (item.kind === 'step-done' && item.ref) {
+    // Fold the result into its step so a late joiner sees one finished row.
+    const step = buildSession.items.find((i) => i.id === item.ref);
+    if (step) {
+      step.status = item.ok ? 'done' : 'error';
+      if (item.summary) step.summary = item.summary;
+      if (item.detail) step.result = item.detail;
+    }
+  } else {
+    buildSession.items.push(item);
+    if (buildSession.items.length > MAX_SESSION_ITEMS) {
+      buildSession.items.splice(0, buildSession.items.length - MAX_SESSION_ITEMS);
+    }
+  }
+  buildSession.updatedAt = Date.now();
+  sseSend('make:chat', { session: buildSession.id, item });
+  saveSession(false);
+}
+
+function setProgress(prog) {
+  if (!buildSession) return;
+  buildSession.progress = {
+    ...prog,
+    startedAt: buildSession.turnStartedAt,
+    status: buildSession.status,
+    sessionId: buildSession.sessionId,
+  };
+  sseSend('make:progress', { session: buildSession.id, ...buildSession.progress });
+}
+
+function claudeArgs(text, sessionId) {
+  const argv = ['-p', text, '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose'];
+  argv.push('--append-system-prompt', BUILD_SYSTEM_PROMPT);
+  // Headless: nobody can answer the interactive question tool. Claude asks in
+  // the chat instead (QUESTION / OPTIONS lines) and the reply resumes it.
+  argv.push('--disallowedTools', 'AskUserQuestion');
+  // Checking its own work is the point of the iteration loop, and acceptEdits
+  // alone would deny it: the OpenSCAD MCP render and the openscad CLI.
+  argv.push(
+    '--allowedTools',
+    'mcp__openscad__render_scad_png',
+    'mcp__openscad__export_scad_stl',
+    'Bash(openscad:*)',
+    'Bash(openscad.com:*)',
+    'Bash(openscad.exe:*)'
+  );
+  if (sessionId) argv.push('--resume', sessionId);
+  return argv;
+}
+
+function childEnv() {
+  const env = { ...process.env };
+  const scad = resolveOpenscad();
+  if (scad) {
+    env.OPENSCAD_BINARY = scad;
+    // So a plain `openscad` in Claude's Bash finds the binary the app renders with.
+    env.PATH = `${path.dirname(scad)}${path.delimiter}${env.PATH || ''}`;
+  }
+  return env;
+}
+
+/** Start a turn: a fresh build (no resume) or a reply (resume). */
+function runTurn(text, { resume } = {}) {
   const claude = resolveClaude();
   if (!claude) {
     return {
@@ -760,36 +880,82 @@ function startMake({ brief } = {}) {
   const startedAt = Date.now();
   makeStartedAt = startedAt;
 
+  if (!resume) {
+    buildSession = {
+      id: `b${startedAt.toString(36)}`,
+      sessionId: null,
+      brief: text,
+      status: 'running',
+      startedAt,
+      turnStartedAt: startedAt,
+      updatedAt: startedAt,
+      turns: 1,
+      files: [],
+      lastFile: null,
+      progress: null,
+      items: [],
+      parserState: null,
+    };
+  } else {
+    buildSession.status = 'running';
+    buildSession.turns += 1;
+    buildSession.turnStartedAt = startedAt;
+    // A new turn walks the bar again from the start; the iteration count keeps going.
+    if (buildSession.parserState) {
+      buildSession.parserState.phase = 'starting';
+      buildSession.parserState.pct = 0;
+      buildSession.parserState.checked = false;
+    }
+  }
+
   let child;
   try {
-    child = spawn(claude, ['-p', text, '--permission-mode', 'acceptEdits', '--output-format', 'text'], {
+    child = spawn(claude, claudeArgs(text, resume ? buildSession.sessionId : null), {
       cwd: WORKSPACE,
+      env: childEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       // Windows has no process groups to signal; killTree shells out instead.
       detached: process.platform !== 'win32',
       windowsHide: true,
     });
   } catch (err) {
+    buildSession.status = 'failed';
     return { error: 'spawn-failed', reason: String((err && err.message) || err) };
   }
 
   makeChild = child;
-  sseSend('make:event', { event: 'start', startedAt });
+  const session = buildSession;
+  pushItem({ kind: 'user', text, brief: !resume, t: startedAt, id: `u${startedAt.toString(36)}` });
+  sseSend('make:event', { event: 'start', startedAt, session: session.id, resume: Boolean(resume) });
 
-  // Keep the tail of the output: a failed run's last line is its reason
-  // ("You've hit your session limit · resets 5:40pm"), and the Studio view
-  // otherwise only ever shows the bare exit code.
+  const parser = createBuildParser({
+    state: session.parserState || undefined,
+    onItem: pushItem,
+    onProgress: setProgress,
+    onSession: (sid) => {
+      if (!session.sessionId) session.sessionId = sid;
+    },
+  });
+  session.parserState = parser.state;
+  setProgress({ phase: 'starting', label: 'Starting Claude', pct: 3, iteration: parser.state.iteration, steps: parser.state.steps });
+
+  // Keep the tail of the raw output: a failed run's last line is its reason
+  // ("You've hit your session limit · resets 5:40pm").
   let tail = '';
-  const onOutput = (c) => {
+  child.stdout.on('data', (c) => {
+    const s = c.toString();
+    tail = (tail + s).slice(-4096);
+    parser.feed(s);
+  });
+  child.stderr.on('data', (c) => {
     const s = c.toString();
     tail = (tail + s).slice(-4096);
     sseSend('make:log', s);
-  };
-  child.stdout.on('data', onOutput);
-  child.stderr.on('data', onOutput);
+  });
 
   const timer = setTimeout(() => {
-    sseSend('make:event', { event: 'timeout', elapsedMs: Date.now() - startedAt });
+    sseSend('make:event', { event: 'timeout', elapsedMs: Date.now() - startedAt, session: session.id });
+    pushItem({ kind: 'error', text: 'This turn ran past 10 minutes and was stopped.' });
     killTree(child);
   }, MAKE_TIMEOUT_MS);
   timer.unref?.();
@@ -797,28 +963,84 @@ function startMake({ brief } = {}) {
   const finish = (code) => {
     clearTimeout(timer);
     makeChild = null;
+    const info = parser.end() || {};
     // Do NOT trust the model to report a path — diff the directory.
     const delta = scadDelta(before, scadSnapshot());
-    const file = delta.created[0] || delta.modified[0] || null;
+    const file = delta.created[delta.created.length - 1] || delta.modified[delta.modified.length - 1] || null;
+    const failed = code !== 0 || info.failed;
+    // Claude's own error text first ("You've hit your session limit"); else the
+    // last plain line it printed. JSON lines are the stream, never the reason.
+    const plain = tail
+      .split(/\r?\n/)
+      .filter((l) => !l.trim().startsWith('{'))
+      .join('\n');
+    const reason = failed ? info.errorText || makeFailureReason(code, file, plain) : null;
+    for (const f of [...delta.created, ...delta.modified]) if (!session.files.includes(f)) session.files.push(f);
+    if (file) session.lastFile = file;
+    session.status = session.cancelled ? 'cancelled' : failed ? 'failed' : info.waiting ? 'waiting' : 'idle';
+    session.cancelled = false;
+    if (file) pushItem({ kind: 'file', file, created: delta.created.includes(file) });
+    if (session.status === 'failed' && reason && !session.items.some((i) => i.kind === 'error' && i.text === reason)) {
+      pushItem({ kind: 'error', text: reason });
+    }
+    if (session.status === 'cancelled') pushItem({ kind: 'system', text: 'You stopped this turn.' });
+    const last = parser.lastAssistant;
+    const ended = session.status === 'failed' || session.status === 'cancelled';
+    setProgress({
+      ...(session.progress || {}),
+      phase: ended ? 'failed' : info.waiting ? 'waiting' : 'done',
+      label:
+        session.status === 'cancelled'
+          ? 'Stopped'
+          : session.status === 'failed'
+            ? 'Stopped with an error'
+            : info.waiting
+              ? 'Waiting for your answer'
+              : 'Done',
+      pct: 100,
+    });
+    saveSession(true);
     sseSend('make:event', {
       event: 'done',
       code,
-      reason: makeFailureReason(code, file, tail),
+      reason,
       elapsedMs: Date.now() - startedAt,
       file,
       created: delta.created,
       modified: delta.modified,
+      session: session.id,
+      waiting: Boolean(info.waiting),
+      options: (last && last.options) || [],
     });
   };
 
   child.on('error', (err) => {
     clearTimeout(timer);
     makeChild = null;
-    sseSend('make:event', { event: 'error', reason: String((err && err.message) || err) });
+    session.status = 'failed';
+    pushItem({ kind: 'error', text: String((err && err.message) || err) });
+    saveSession(true);
+    sseSend('make:event', { event: 'error', reason: String((err && err.message) || err), session: session.id });
   });
   child.on('exit', finish);
 
-  return { started: true, startedAt };
+  return { started: true, startedAt, session: session.id };
+}
+
+function startMake({ brief } = {}) {
+  if (makeChild) return { error: 'already-running', startedAt: makeStartedAt };
+  const text = typeof brief === 'string' ? brief.trim() : '';
+  if (!text) return { error: 'no-brief' };
+  return runTurn(text);
+}
+
+function replyMake({ text } = {}) {
+  if (makeChild) return { error: 'already-running', startedAt: makeStartedAt };
+  const t = typeof text === 'string' ? text.trim() : '';
+  if (!t) return { error: 'no-brief' };
+  // Nothing to continue: treat it as a fresh build so the click still works.
+  if (!buildSession || !buildSession.sessionId) return runTurn(t);
+  return runTurn(t, { resume: true });
 }
 
 // ── models: list, params, render, export ──────────────────────────────────
@@ -1320,6 +1542,7 @@ async function route(req, res, url) {
 
   if (p === '/api/make/cancel' && method === 'POST') {
     if (!makeChild) return sendJson(res, 200, { ok: false, reason: 'nothing running' });
+    if (buildSession) buildSession.cancelled = true;
     killTree(makeChild);
     return sendJson(res, 200, { ok: true });
   }
@@ -1329,7 +1552,51 @@ async function route(req, res, url) {
       running: Boolean(makeChild),
       startedAt: makeChild ? makeStartedAt : null,
       claude: resolveClaude(),
+      workspace: WORKSPACE,
+      session: buildSession ? buildSession.id : null,
+      sessionId: buildSession ? buildSession.sessionId : null,
+      progress: buildSession ? buildSession.progress : null,
     });
+  }
+
+  // The whole chat so far: a tab opened mid-build, a reload, or the desktop
+  // app replays it from here, then follows make:chat on the stream.
+  if (p === '/api/make/session' && method === 'GET') {
+    const id = url.searchParams.get('id');
+    if (id && (!buildSession || buildSession.id !== id)) {
+      if (!/^b[a-z0-9]+$/.test(id)) return sendJson(res, 400, { ok: false, error: 'bad-id' });
+      try {
+        const s = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, `${id}.json`), 'utf-8'));
+        return sendJson(res, 200, { ok: true, running: false, session: sessionSummary(s) });
+      } catch {
+        return sendJson(res, 404, { ok: false, error: 'not-found' });
+      }
+    }
+    return sendJson(res, 200, { ok: true, running: Boolean(makeChild), session: sessionSummary(buildSession) });
+  }
+
+  // A reply: answer Claude's question, pick one of its options, or ask for a
+  // change. Resumes the same Claude session so it keeps all its context.
+  if (p === '/api/make/reply' && method === 'POST') {
+    const body = await readJsonBody(req).catch(() => ({}));
+    const started = replyMake({ text: body && body.text });
+    if (started.error) {
+      const status = started.error === 'already-running' ? 409 : started.error === 'no-brief' ? 400 : 503;
+      return sendJson(res, status, { ok: false, ...started });
+    }
+    return sendJson(res, 200, { ok: true, ...started });
+  }
+
+  // Start a fresh chat: the next Make it begins a new session. The old
+  // session's file stays in build-sessions/ — only the pointer is cleared.
+  if (p === '/api/make/new' && method === 'POST') {
+    if (makeChild) return sendJson(res, 409, { ok: false, error: 'already-running' });
+    buildSession = null;
+    try {
+      fs.rmSync(path.join(SESSIONS_DIR, 'latest.json'), { force: true });
+    } catch {}
+    sseSend('make:event', { event: 'cleared' });
+    return sendJson(res, 200, { ok: true });
   }
 
   // ── models: list / params / render / export ─────────────────────────────
