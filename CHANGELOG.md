@@ -5,6 +5,15 @@ All notable changes to ClawSCAD. Versions follow [semver](https://semver.org/).
 `scripts/release.ps1` pulls the release notes for a version straight out of the
 matching `## [x.y.z]` section below, so keep the heading format exact.
 
+## [0.9.1] - 2026-11-20
+
+### Fixed
+
+- **The installed app now uses its own bundled OpenSCAD.** The Windows zip unpacks into a
+  versioned subfolder (`openscad-win/OpenSCAD-2026.03.16-x86-64/`), so the flat lookup never
+  found it and every install fell back to whatever `openscad` was on PATH (none on a clean
+  machine). `openscadBundledPath()` now looks one level down.
+
 ## [0.9.0] - 2026-11-19
 
 ### Added

@@ -70,7 +70,21 @@ function openscadBundledPath() {
     darwin: path.join(base, 'OpenSCAD.app', 'Contents', 'MacOS', 'OpenSCAD'),
     win32: path.join(base, 'openscad-win', 'openscad.exe'),
   };
-  return candidates[process.platform] || null;
+  const found = candidates[process.platform] || null;
+  // The Windows zip unpacks into a versioned subfolder
+  // (openscad-win/OpenSCAD-2026.03.16-x86-64/openscad.exe), so the flat path
+  // above never existed and every install silently fell back to PATH. Look one
+  // level down before giving up.
+  if (found && process.platform === 'win32' && !fs.existsSync(found)) {
+    const dir = path.dirname(found);
+    try {
+      for (const sub of fs.readdirSync(dir)) {
+        const nested = path.join(dir, sub, 'openscad.exe');
+        if (fs.existsSync(nested)) return nested;
+      }
+    } catch {}
+  }
+  return found;
 }
 
 // --backend=Manifold is ~50x faster than 2021.01's CGAL on boolean-heavy
